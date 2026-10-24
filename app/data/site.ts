@@ -100,7 +100,7 @@ export const projects: Project[] = [
       },
       {
         key: 'site',
-        to: 'https://monoone.dev/rig-one-landing-page/',
+        to: 'https://rig-one.io/',
         icon: 'i-lucide-arrow-up-right'
       }
     ]
