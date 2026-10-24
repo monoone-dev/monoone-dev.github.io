@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { posts } from '#shared/blog'
+import { locales } from '#shared/locales'
 import { site } from '~/data/site'
 
 const { t, locale } = useI18n()
@@ -14,8 +15,38 @@ useSeoMeta({
   title,
   description: () => t('blog.description'),
   ogTitle: title,
-  ogDescription: () => t('blog.description')
+  ogDescription: () => t('blog.description'),
+  twitterTitle: title,
+  twitterDescription: () => t('blog.description')
 })
+
+// schema.org Blog with its posts, in the page's language
+const { app, public: { i18n } } = useRuntimeConfig()
+const absolute = (path: string) =>
+  `${(i18n.baseUrl as string).replace(/\/$/, '')}${app.baseURL.replace(/\/$/, '')}${localePath(path).replace(/\/?$/, '/')}`
+
+useHead(() => ({
+  script: [{
+    type: 'application/ld+json',
+    innerHTML: JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Blog',
+      'name': `${t('blog.title')} — ${site.name}`,
+      'description': t('blog.description'),
+      'url': absolute('/blog'),
+      'inLanguage': locales.find(l => l.code === locale.value)?.language ?? locale.value,
+      'publisher': { '@type': 'Organization', 'name': site.name, 'url': site.url },
+      'blogPost': posts.map(post => ({
+        '@type': 'TechArticle',
+        'headline': t(`blog.posts.${post.key}.title`),
+        'description': t(`blog.posts.${post.key}.description`),
+        'url': absolute(`/blog/${post.slug}`),
+        'datePublished': post.date,
+        'dateModified': post.date
+      }))
+    })
+  }]
+}))
 </script>
 
 <template>

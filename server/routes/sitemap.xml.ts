@@ -1,7 +1,7 @@
 // One <url> per page and language, each listing every other language as an hreflang alternate,
 // the same set the page head declares. Prerendered by `pnpm generate`, so it is a static file on Pages.
 import { defaultLocale, locales } from '#shared/locales'
-import { posts } from '#shared/blog'
+import { postPages, posts } from '#shared/blog'
 
 export default defineEventHandler((event) => {
   const { app, public: { i18n } } = useRuntimeConfig(event)
@@ -9,7 +9,7 @@ export default defineEventHandler((event) => {
   const href = (code: string, page: string) =>
     `${code === defaultLocale ? root : `${root}${code}/`}${page}`
 
-  const pages = ['', 'blog/', ...posts.map(post => `blog/${post.slug}/`)]
+  const pages = ['', 'blog/', ...posts.flatMap(postPages)]
 
   const urls = pages.flatMap((page) => {
     const alternates = [

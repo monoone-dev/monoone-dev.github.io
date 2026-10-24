@@ -196,12 +196,12 @@
     "version": "Versión {version}",
     "read": "Leer",
     "back": "Todas las entradas",
-    "onThisPage": "En esta página",
     "minutes": "{n} min de lectura | {n} min de lectura | {n} min de lectura",
     "posts": {
       "slat": {
         "title": "SLAT: un patrón de backend para aplicaciones con Rust y Tauri",
-        "description": "La guía completa de SLAT 1.1 (Slice · Layer · Actor · Tier): tiers, slices, actores, plataformas, cumplimiento de las reglas, migración y un ejemplo práctico."
+        "description": "La guía completa de SLAT 1.1 (Slice · Layer · Actor · Tier): tiers, slices, actores, plataformas, cumplimiento de las reglas, migración y un ejemplo práctico.",
+        "short": "Guía de SLAT"
       }
     },
     "diagrams": {
@@ -216,6 +216,13 @@
         "actors": "Actores",
         "checks": "Checks"
       }
-    }
+    },
+    "contents": "Contenido",
+    "overview": "Introducción",
+    "start": "Empezar a leer",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "sectionOf": "Sección {n} de {total}",
+    "sections": "{n} secciones | {n} sección | {n} secciones"
   }
 }

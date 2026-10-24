@@ -23,10 +23,10 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 | Mono theme (grayscale, black/white primary) | `app/assets/css/main.css`, `app/app.config.ts` |
 | Animations | `app/assets/scss/main.scss` (`.enter`, `.reveal`, hover rules) and `app/components/Reveal.vue` |
 | GitHub stars / followers | `server/api/github.get.ts`, `app/components/GithubStats.vue` |
-| Blog: list of posts (slug, date, version) | `shared/blog.ts`; title and description per language under `blog.posts.<key>` in the locale files |
+| Blog: list of posts (slug, date, version, section slugs) | `shared/blog.ts`; title and description per language under `blog.posts.<key>` in the locale files |
 | Blog: article text, one file per language | `content/blog/<slug>/<code>.md` (English is the fallback); `:::diagram <name>` on its own line places a diagram |
-| Blog: diagrams, rendering, table of contents | `app/components/blog/diagrams/`, `app/components/blog/BlogProse.vue`, `app/utils/markdown.ts`, `app/components/blog/BlogToc.vue` |
-| Blog pages | `app/pages/blog/index.vue`, `app/pages/blog/[slug].vue`; prerendered for every language in `nuxt.config.ts`, listed in the sitemap |
+| Blog: diagrams, rendering, navigation | `app/components/blog/diagrams/`, `BlogProse.vue`, `BlogLayout.vue`, `BlogSectionNav.vue`, `BlogPager.vue` in `app/components/blog/`; `app/utils/markdown.ts` splits the article into sections |
+| Blog pages and SEO | `app/pages/blog/index.vue`, `app/pages/blog/[slug]/index.vue` (overview), `app/pages/blog/[slug]/[section].vue` (one `##` section per page); title, description and schema.org in `app/composables/useBlogSeo.ts`; every page prerendered for every language in `nuxt.config.ts` and listed in the sitemap |
 
 ## Content rules
 
@@ -63,9 +63,12 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 ## Blog post
 
 1. Add the post to `posts` in `shared/blog.ts` and its `blog.posts.<key>` title and description to all nine locale files.
-2. Write `content/blog/<slug>/en.md`, then one file per language with the **same headings in the same order**:
-   section anchors are numbered (`#s9-4`), so every language must keep the numbering and every
-   `:::diagram` line. Code blocks stay identical in every language.
+2. Write `content/blog/<slug>/en.md`, then one file per language with the **same headings in the same order**.
+   Each `##` section is its own page at `/blog/<slug>/<section>/`, and the text before the first `##`
+   is the overview. List one English URL slug per `##` in `sections` in `shared/blog.ts`; the build
+   fails when a language has a different number of sections. Subsection anchors are numbered
+   (`#s9-4`), so keep the numbering and every `:::diagram` line. Code blocks stay identical in every language.
+   The first paragraph of at least 60 characters becomes the page's search description.
 3. A new diagram is a component in `app/components/blog/diagrams/` registered in `BlogProse.vue`.
    Give its SVG marker a fixed id (`slat-<name>-arrow`), not `useId()`: the ids differ between the
    prerendered page and the browser, and the arrowheads disappear.
