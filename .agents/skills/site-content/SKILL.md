@@ -23,6 +23,10 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 | Mono theme (grayscale, black/white primary) | `app/assets/css/main.css`, `app/app.config.ts` |
 | Animations | `app/assets/scss/main.scss` (`.enter`, `.reveal`, hover rules) and `app/components/Reveal.vue` |
 | GitHub stars / followers | `server/api/github.get.ts`, `app/components/GithubStats.vue` |
+| Blog: list of posts (slug, date, version) | `shared/blog.ts`; title and description per language under `blog.posts.<key>` in the locale files |
+| Blog: article text, one file per language | `content/blog/<slug>/<code>.md` (English is the fallback); `:::diagram <name>` on its own line places a diagram |
+| Blog: diagrams, rendering, table of contents | `app/components/blog/diagrams/`, `app/components/blog/BlogProse.vue`, `app/utils/markdown.ts`, `app/components/blog/BlogToc.vue` |
+| Blog pages | `app/pages/blog/index.vue`, `app/pages/blog/[slug].vue`; prerendered for every language in `nuxt.config.ts`, listed in the sitemap |
 
 ## Content rules
 
@@ -55,6 +59,16 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 2. Add its logo as a component next to `IndexOneMark.vue`: inline the official SVG, prefix every
    gradient/filter id with `useId()` so two copies on a page do not collide.
 3. With two or more projects, check the Projects section layout and the hero button target.
+
+## Blog post
+
+1. Add the post to `posts` in `shared/blog.ts` and its `blog.posts.<key>` title and description to all nine locale files.
+2. Write `content/blog/<slug>/en.md`, then one file per language with the **same headings in the same order**:
+   section anchors are numbered (`#s9-4`), so every language must keep the numbering and every
+   `:::diagram` line. Code blocks stay identical in every language.
+3. A new diagram is a component in `app/components/blog/diagrams/` registered in `BlogProse.vue`.
+   Give its SVG marker a fixed id (`slat-<name>-arrow`), not `useId()`: the ids differ between the
+   prerendered page and the browser, and the arrowheads disappear.
 
 ## Header
 

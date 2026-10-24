@@ -1,0 +1,314 @@
+// Long-form articles on /blog. Rendered Markdown has no classes of its own, so the rules here
+// style plain elements inside `.prose-doc`. Colors come from Nuxt UI tokens (light and dark).
+
+.prose-doc {
+  margin-top: 2.5rem;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--ui-text);
+  overflow-wrap: break-word;
+
+  > div > :first-child {
+    margin-top: 0;
+  }
+
+  h2,
+  h3 {
+    scroll-margin-top: calc(var(--ui-header-height) + 1.5rem);
+    color: var(--ui-text-highlighted);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  h2 {
+    margin: 3.5rem 0 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--ui-border);
+    font-size: 1.75rem;
+    line-height: 1.25;
+  }
+
+  h3 {
+    margin: 2.25rem 0 0.75rem;
+    font-size: 1.25rem;
+    line-height: 1.35;
+  }
+
+  p,
+  ul,
+  ol,
+  blockquote,
+  pre,
+  .table-wrap {
+    margin: 1rem 0;
+  }
+
+  ul,
+  ol {
+    padding-left: 1.4rem;
+  }
+
+  ul {
+    list-style: disc;
+  }
+
+  ol {
+    list-style: decimal;
+  }
+
+  li + li {
+    margin-top: 0.35rem;
+  }
+
+  li::marker {
+    color: var(--ui-text-dimmed);
+  }
+
+  strong {
+    color: var(--ui-text-highlighted);
+    font-weight: 600;
+  }
+
+  a {
+    color: var(--ui-text-highlighted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--ui-border-accented);
+  }
+
+  blockquote {
+    padding: 0.9rem 1.1rem;
+    border: 1px solid var(--ui-border);
+    border-left: 3px solid var(--ui-text-highlighted);
+    border-radius: var(--ui-radius);
+    background: var(--ui-bg-elevated);
+
+    p {
+      margin: 0;
+    }
+  }
+
+  :not(pre) > code {
+    padding: 0.1em 0.35em;
+    border: 1px solid var(--ui-border);
+    border-radius: 0.3rem;
+    background: var(--ui-bg-elevated);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--ui-border);
+    border-radius: calc(var(--ui-radius) * 1.5);
+    background: var(--ui-bg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    tab-size: 4;
+
+    code {
+      font-family: inherit;
+    }
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--ui-border);
+    border-radius: calc(var(--ui-radius) * 1.5);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+
+  th,
+  td {
+    padding: 0.6rem 0.85rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  th {
+    background: var(--ui-bg-elevated);
+    color: var(--ui-text-highlighted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+
+  td code {
+    white-space: nowrap;
+  }
+}
+
+// ---- Diagrams ----------------------------------------------------------------
+
+.slat-diagram {
+  margin: 2rem 0;
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--ui-border);
+  border-radius: calc(var(--ui-radius) * 1.5);
+  background:
+    radial-gradient(circle, var(--ui-border) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--ui-bg);
+}
+
+.slat-svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+  font-family: var(--font-sans);
+
+  .d-box {
+    fill: var(--ui-bg-elevated);
+    stroke: var(--ui-border-accented);
+    stroke-width: 1.25;
+  }
+
+  .d-inner {
+    fill: var(--ui-bg);
+  }
+
+  .d-strong {
+    fill: var(--ui-bg-inverted);
+    stroke: var(--ui-bg-inverted);
+  }
+
+  .d-on-strong-box {
+    fill: var(--ui-bg);
+    stroke: var(--ui-bg);
+  }
+
+  .d-ghost {
+    fill: transparent;
+    stroke-dasharray: 5 4;
+  }
+
+  .d-lane {
+    fill: transparent;
+    stroke: var(--ui-border);
+    stroke-dasharray: 3 5;
+  }
+
+  .d-title {
+    fill: var(--ui-text-highlighted);
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .d-note {
+    fill: var(--ui-text-muted);
+    font-size: 12.5px;
+  }
+
+  .d-mono {
+    fill: var(--ui-text-highlighted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .d-bold {
+    font-weight: 700;
+  }
+
+  .d-muted {
+    fill: var(--ui-text-muted);
+  }
+
+  .d-on-strong {
+    fill: var(--ui-text-inverted);
+  }
+
+  .d-label-bg {
+    paint-order: stroke;
+    stroke: var(--ui-bg);
+    stroke-width: 6px;
+    stroke-linejoin: round;
+  }
+
+  .d-line {
+    fill: none;
+    stroke: var(--ui-text-muted);
+    stroke-width: 1.5;
+  }
+
+  .d-dash {
+    stroke-dasharray: 6 5;
+  }
+
+  .d-head {
+    fill: var(--ui-text-muted);
+  }
+}
+
+// ---- Table of contents ----------------------------------------------------------
+
+.blog-toc {
+  font-size: 0.875rem;
+  line-height: 1.45;
+
+  .blog-toc-title {
+    margin-bottom: 0.75rem;
+    color: var(--ui-text-highlighted);
+    font-weight: 600;
+  }
+
+  ul ul {
+    margin: 0.35rem 0 0.5rem 0.75rem;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--ui-border);
+  }
+
+  li + li {
+    margin-top: 0.4rem;
+  }
+
+  a {
+    display: block;
+    color: var(--ui-text-muted);
+    transition: color 0.15s;
+
+    &:hover,
+    &.active {
+      color: var(--ui-text-highlighted);
+    }
+
+    &.active {
+      font-weight: 500;
+    }
+  }
+}
+
+.blog-toc-mobile {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ui-border);
+  border-radius: calc(var(--ui-radius) * 1.5);
+
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--ui-text-highlighted);
+  }
+
+  .blog-toc {
+    margin-top: 0.75rem;
+
+    .blog-toc-title {
+      display: none;
+    }
+  }
+}

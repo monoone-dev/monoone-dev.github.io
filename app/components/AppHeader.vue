@@ -7,12 +7,17 @@ const localePath = useLocalePath()
 const language = useLanguageMenu()
 const theme = useThemeMenu()
 
-const links = computed<NavigationMenuItem[]>(() =>
-  ['principles', 'projects', 'contact'].map(id => ({
-    label: t(`nav.${id}`),
-    to: { path: localePath('/'), hash: `#${id}` }
-  }))
-)
+const section = (id: string): NavigationMenuItem => ({
+  label: t(`nav.${id}`),
+  to: { path: localePath('/'), hash: `#${id}` }
+})
+
+const links = computed<NavigationMenuItem[]>(() => [
+  section('principles'),
+  section('projects'),
+  { label: t('nav.blog'), to: localePath('/blog') },
+  section('contact')
+])
 
 const github = computed<DropdownMenuItem>(() => ({
   label: 'GitHub',

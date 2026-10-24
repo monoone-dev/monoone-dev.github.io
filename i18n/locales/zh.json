@@ -7,6 +7,7 @@
     "principles": "理念",
     "projects": "项目",
     "contact": "联系",
+    "blog": "博客",
     "language": "语言",
     "github": "GitHub 上的 MonoOne",
     "menu": "菜单"
@@ -187,5 +188,34 @@
   },
   "footer": {
     "tagline": "macOS 优先 · 本地优先 · 纯 Markdown"
+  },
+  "blog": {
+    "eyebrow": "MonoOne · 博客",
+    "title": "博客",
+    "description": "记录我们如何构建 MonoOne 产品：所用的模式、背后的决定，以及可以用在你自己项目中的指南。",
+    "version": "版本 {version}",
+    "read": "阅读",
+    "back": "全部文章",
+    "onThisPage": "本页内容",
+    "minutes": "阅读约 {n} 分钟",
+    "posts": {
+      "slat": {
+        "title": "SLAT：面向 Rust 和 Tauri 应用的后端模式",
+        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）完整指南：层级、切片、Actor、平台、规则执行、迁移以及一个完整示例。"
+      }
+    },
+    "diagrams": {
+      "migration": {
+        "label": "八步迁移",
+        "measure": "测量",
+        "invert": "反转依赖",
+        "split": "拆分 app / core",
+        "tiers": "kit · store · drivers",
+        "slices": "切片",
+        "jobs": "kit::Jobs",
+        "actors": "Actor",
+        "checks": "检查"
+      }
+    }
   }
 }

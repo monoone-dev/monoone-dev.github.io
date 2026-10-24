@@ -7,6 +7,7 @@
     "principles": "Zasady",
     "projects": "Projekty",
     "contact": "Kontakt",
+    "blog": "Blog",
     "language": "Język",
     "github": "MonoOne na GitHubie",
     "menu": "Menu"
@@ -187,5 +188,34 @@
   },
   "footer": {
     "tagline": "najpierw macOS · najpierw lokalnie · zwykły Markdown"
+  },
+  "blog": {
+    "eyebrow": "MonoOne · Blog",
+    "title": "Blog",
+    "description": "Notatki o tym, jak budujemy produkty MonoOne: wzorce, których używamy, decyzje, które za nimi stoją, i przewodniki do zastosowania we własnych projektach.",
+    "version": "Wersja {version}",
+    "read": "Czytaj",
+    "back": "Wszystkie wpisy",
+    "onThisPage": "Na tej stronie",
+    "minutes": "{n} min czytania | {n} min czytania | {n} min czytania | {n} min czytania",
+    "posts": {
+      "slat": {
+        "title": "SLAT: wzorzec backendu dla aplikacji w Rust i Tauri",
+        "description": "Kompletny przewodnik po SLAT 1.1 (Slice · Layer · Actor · Tier): tiery, slice'y, aktorzy, platformy, egzekwowanie reguł, migracja i przykład krok po kroku."
+      }
+    },
+    "diagrams": {
+      "migration": {
+        "label": "Migracja w ośmiu krokach",
+        "measure": "Pomiar",
+        "invert": "Odwrócenie zależności",
+        "split": "Podział app / core",
+        "tiers": "kit · store · drivers",
+        "slices": "Slice'y",
+        "jobs": "kit::Jobs",
+        "actors": "Aktorzy",
+        "checks": "Checki"
+      }
+    }
   }
 }
