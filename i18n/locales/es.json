@@ -7,6 +7,7 @@
     "principles": "Principios",
     "projects": "Proyectos",
     "contact": "Contacto",
+    "blog": "Blog",
     "language": "Idioma",
     "github": "MonoOne en GitHub",
     "menu": "Menú"
@@ -187,5 +188,34 @@
   },
   "footer": {
     "tagline": "primero macOS · primero local · Markdown plano"
+  },
+  "blog": {
+    "eyebrow": "MonoOne · Blog",
+    "title": "Blog",
+    "description": "Notas sobre cómo construimos los productos de MonoOne: los patrones que usamos, las decisiones detrás de ellos y guías que puedes aplicar en tus propios proyectos.",
+    "version": "Versión {version}",
+    "read": "Leer",
+    "back": "Todas las entradas",
+    "onThisPage": "En esta página",
+    "minutes": "{n} min de lectura | {n} min de lectura | {n} min de lectura",
+    "posts": {
+      "slat": {
+        "title": "SLAT: un patrón de backend para aplicaciones con Rust y Tauri",
+        "description": "La guía completa de SLAT 1.1 (Slice · Layer · Actor · Tier): tiers, slices, actores, plataformas, cumplimiento de las reglas, migración y un ejemplo práctico."
+      }
+    },
+    "diagrams": {
+      "migration": {
+        "label": "Migración en ocho pasos",
+        "measure": "Medir",
+        "invert": "Invertir dependencias",
+        "split": "Separar app / core",
+        "tiers": "kit · store · drivers",
+        "slices": "Slices",
+        "jobs": "kit::Jobs",
+        "actors": "Actores",
+        "checks": "Checks"
+      }
+    }
   }
 }

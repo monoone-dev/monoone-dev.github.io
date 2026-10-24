@@ -1,4 +1,11 @@
 import { locales } from './shared/locales'
+import { posts } from './shared/blog'
+
+// Every language gets the blog index and every post, prerendered like the home page
+const blogRoutes = locales.flatMap((l) => {
+  const prefix = l.code === 'en' ? '' : `/${l.code}`
+  return [`${prefix}/blog`, ...posts.map(post => `${prefix}/blog/${post.slug}`)]
+})
 
 // The static build serves English HTML at /. If i18n switched that page to the visitor's language
 // after it loaded, hydration would keep English attributes (the flag in the header stayed British
@@ -22,7 +29,7 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true },
 
-  css: ['~/assets/css/main.css', '~/assets/scss/main.scss'],
+  css: ['~/assets/css/main.css', '~/assets/scss/main.scss', '~/assets/scss/blog.scss'],
 
   runtimeConfig: {
     githubOrg: 'monoone-dev',
@@ -64,7 +71,7 @@ export default defineNuxtConfig({
   // numbers into the pages; the deploy workflow reruns daily to refresh them.
   nitro: {
     prerender: {
-      routes: ['/', '/pl', '/es', '/it', '/fr', '/pt', '/de', '/zh', '/ja', '/api/github', '/sitemap.xml', '/robots.txt']
+      routes: ['/', '/pl', '/es', '/it', '/fr', '/pt', '/de', '/zh', '/ja', ...blogRoutes, '/api/github', '/sitemap.xml', '/robots.txt']
     }
   },
 

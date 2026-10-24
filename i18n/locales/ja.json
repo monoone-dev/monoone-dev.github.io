@@ -7,6 +7,7 @@
     "principles": "理念",
     "projects": "プロジェクト",
     "contact": "お問い合わせ",
+    "blog": "ブログ",
     "language": "言語",
     "github": "GitHub の MonoOne",
     "menu": "メニュー"
@@ -187,5 +188,34 @@
   },
   "footer": {
     "tagline": "macOS ファースト · ローカルファースト · プレーンな Markdown"
+  },
+  "blog": {
+    "eyebrow": "MonoOne · ブログ",
+    "title": "ブログ",
+    "description": "MonoOne の製品をどう作っているかについてのノートです。使っているパターン、その背景にある判断、そしてご自身のプロジェクトに使えるガイドをまとめています。",
+    "version": "バージョン {version}",
+    "read": "読む",
+    "back": "すべての記事",
+    "onThisPage": "このページの内容",
+    "minutes": "約 {n} 分で読めます",
+    "posts": {
+      "slat": {
+        "title": "SLAT：RustとTauriのアプリのためのバックエンドパターン",
+        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）の完全ガイド。ティア、スライス、アクター、プラットフォーム、強制の仕組み、移行、そして具体例を解説します。"
+      }
+    },
+    "diagrams": {
+      "migration": {
+        "label": "8 ステップの移行",
+        "measure": "計測",
+        "invert": "依存の反転",
+        "split": "app / core の分割",
+        "tiers": "kit · store · drivers",
+        "slices": "スライス",
+        "jobs": "kit::Jobs",
+        "actors": "アクター",
+        "checks": "チェック"
+      }
+    }
   }
 }
