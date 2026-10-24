@@ -196,12 +196,12 @@
     "version": "Wersja {version}",
     "read": "Czytaj",
     "back": "Wszystkie wpisy",
-    "onThisPage": "Na tej stronie",
     "minutes": "{n} min czytania | {n} min czytania | {n} min czytania | {n} min czytania",
     "posts": {
       "slat": {
         "title": "SLAT: wzorzec backendu dla aplikacji w Rust i Tauri",
-        "description": "Kompletny przewodnik po SLAT 1.1 (Slice · Layer · Actor · Tier): tiery, slice'y, aktorzy, platformy, egzekwowanie reguł, migracja i przykład krok po kroku."
+        "description": "Kompletny przewodnik po SLAT 1.1 (Slice · Layer · Actor · Tier): tiery, slice'y, aktorzy, platformy, egzekwowanie reguł, migracja i przykład krok po kroku.",
+        "short": "Przewodnik SLAT"
       }
     },
     "diagrams": {
@@ -216,6 +216,13 @@
         "actors": "Aktorzy",
         "checks": "Checki"
       }
-    }
+    },
+    "contents": "Spis treści",
+    "overview": "Wprowadzenie",
+    "start": "Zacznij czytać",
+    "previous": "Poprzednia",
+    "next": "Następna",
+    "sectionOf": "Sekcja {n} z {total}",
+    "sections": "{n} sekcji | {n} sekcja | {n} sekcje | {n} sekcji"
   }
 }

@@ -196,12 +196,12 @@
     "version": "版本 {version}",
     "read": "阅读",
     "back": "全部文章",
-    "onThisPage": "本页内容",
     "minutes": "阅读约 {n} 分钟",
     "posts": {
       "slat": {
         "title": "SLAT：面向 Rust 和 Tauri 应用的后端模式",
-        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）完整指南：层级、切片、Actor、平台、规则执行、迁移以及一个完整示例。"
+        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）完整指南：层级、切片、Actor、平台、规则执行、迁移以及一个完整示例。",
+        "short": "SLAT 指南"
       }
     },
     "diagrams": {
@@ -216,6 +216,13 @@
         "actors": "Actor",
         "checks": "检查"
       }
-    }
+    },
+    "contents": "目录",
+    "overview": "概览",
+    "start": "开始阅读",
+    "previous": "上一节",
+    "next": "下一节",
+    "sectionOf": "第 {n} 节，共 {total} 节",
+    "sections": "{n} 节"
   }
 }
