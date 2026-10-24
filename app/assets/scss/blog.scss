@@ -312,3 +312,116 @@
     }
   }
 }
+
+// ---- Section pages: breadcrumb, contents, previous / next ------------------------
+
+.blog-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--ui-text-muted);
+
+  a:hover {
+    color: var(--ui-text-highlighted);
+  }
+
+  [aria-current] {
+    color: var(--ui-text-highlighted);
+  }
+}
+
+.blog-contents {
+  margin-top: 1.25rem;
+  border: 1px solid var(--ui-border);
+  border-radius: calc(var(--ui-radius) * 1.5);
+  overflow: hidden;
+
+  li + li {
+    border-top: 1px solid var(--ui-border);
+  }
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1.1rem;
+    transition: background-color 0.15s;
+
+    &:hover {
+      background: var(--ui-bg-elevated);
+
+      .blog-contents-arrow {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  }
+
+  .blog-contents-number {
+    min-width: 1.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--ui-text-dimmed);
+  }
+
+  .blog-contents-name {
+    flex: 1;
+    color: var(--ui-text-highlighted);
+    font-weight: 500;
+  }
+
+  .blog-contents-arrow {
+    color: var(--ui-text-muted);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.15s, transform 0.15s;
+  }
+}
+
+.blog-pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--ui-border);
+
+  @media (max-width: 639px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blog-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--ui-border);
+  border-radius: calc(var(--ui-radius) * 1.5);
+  transition: border-color 0.15s, background-color 0.15s;
+
+  &:hover {
+    border-color: var(--ui-border-accented);
+    background: var(--ui-bg-elevated);
+  }
+}
+
+.blog-pager-next {
+  text-align: right;
+  align-items: flex-end;
+}
+
+.blog-pager-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ui-text-muted);
+}
+
+.blog-pager-label {
+  color: var(--ui-text-highlighted);
+  font-weight: 600;
+}

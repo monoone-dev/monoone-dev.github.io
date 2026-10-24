@@ -1,10 +1,11 @@
 import { locales } from './shared/locales'
-import { posts } from './shared/blog'
+import { postPages, posts } from './shared/blog'
 
-// Every language gets the blog index and every post, prerendered like the home page
+// Every language gets the blog index and every page of every post (overview and sections),
+// prerendered like the home page
 const blogRoutes = locales.flatMap((l) => {
   const prefix = l.code === 'en' ? '' : `/${l.code}`
-  return [`${prefix}/blog`, ...posts.map(post => `${prefix}/blog/${post.slug}`)]
+  return ['blog/', ...posts.flatMap(postPages)].map(page => `${prefix}/${page.replace(/\/$/, '')}`)
 })
 
 // The static build serves English HTML at /. If i18n switched that page to the visitor's language

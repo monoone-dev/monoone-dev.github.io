@@ -196,12 +196,12 @@
     "version": "バージョン {version}",
     "read": "読む",
     "back": "すべての記事",
-    "onThisPage": "このページの内容",
     "minutes": "約 {n} 分で読めます",
     "posts": {
       "slat": {
         "title": "SLAT：RustとTauriのアプリのためのバックエンドパターン",
-        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）の完全ガイド。ティア、スライス、アクター、プラットフォーム、強制の仕組み、移行、そして具体例を解説します。"
+        "description": "SLAT 1.1（Slice · Layer · Actor · Tier）の完全ガイド。ティア、スライス、アクター、プラットフォーム、強制の仕組み、移行、そして具体例を解説します。",
+        "short": "SLAT ガイド"
       }
     },
     "diagrams": {
@@ -216,6 +216,13 @@
         "actors": "アクター",
         "checks": "チェック"
       }
-    }
+    },
+    "contents": "目次",
+    "overview": "概要",
+    "start": "読み始める",
+    "previous": "前へ",
+    "next": "次へ",
+    "sectionOf": "セクション {n} / {total}",
+    "sections": "{n} セクション"
   }
 }
