@@ -118,6 +118,100 @@ Un workspace SLAT compte au plus cinq sortes de crates. Elles s'appellent `<prod
 
 Dans ce document, `core/…` et `app/…` abrègent les dossiers sources des deux crates. `core/src/<slice>/` correspond à `crates/<product>-core/src/<slice>/`, et `app/src/<slice>/` à `src-tauri/src/<slice>/`, le dossier que Tauri crée pour la crate de l'application. Les checks de la section 16 utilisent les chemins complets.
 
+Un workspace SLAT complet : Quayside, l'application d'exemple de la section 20, après sa migration.
+
+```tree
+quayside/
+├── Cargo.toml
+├── package.json
+├── docs/
+│   └── slat/
+│       └── SLAT.md
+├── checks/
+│   ├── baselines/
+│   │   └── emit.txt
+│   ├── slat-commands.sh
+│   ├── slat-emit.sh
+│   ├── slat-platform.sh
+│   └── slat-pure-update.sh
+├── crates/
+│   ├── quayside-kit/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── ids.rs
+│   │       ├── paths.rs
+│   │       ├── durable_file.rs
+│   │       └── jobs.rs
+│   ├── quayside-store/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── writer.rs
+│   │       ├── schema.rs
+│   │       └── migrations/
+│   ├── quayside-drivers/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── whisper.rs
+│   │       ├── recorder.rs
+│   │       └── platform/
+│   │           ├── mod.rs
+│   │           ├── unix.rs
+│   │           ├── macos.rs
+│   │           └── unsupported.rs
+│   └── quayside-core/
+│       ├── Cargo.toml
+│       ├── src/
+│       │   ├── lib.rs
+│       │   ├── recording/
+│       │   │   ├── mod.rs
+│       │   │   ├── model.rs
+│       │   │   ├── logic.rs
+│       │   │   ├── service.rs
+│       │   │   └── actor/
+│       │   │       ├── mod.rs
+│       │   │       ├── msg.rs
+│       │   │       ├── state.rs
+│       │   │       ├── update.rs
+│       │   │       ├── effect.rs
+│       │   │       ├── run.rs
+│       │   │       ├── handle.rs
+│       │   │       └── snapshot.rs
+│       │   └── transcript/
+│       │       ├── mod.rs
+│       │       ├── model.rs
+│       │       ├── logic.rs
+│       │       ├── store.rs
+│       │       └── service.rs
+│       └── tests/
+│           └── it/
+│               ├── main.rs
+│               └── recording_stops_on_time_limit.rs
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   └── src/
+│       ├── main.rs
+│       ├── lib.rs
+│       ├── state.rs
+│       ├── error.rs
+│       ├── recording/
+│       │   ├── mod.rs
+│       │   ├── commands.rs
+│       │   ├── dto.rs
+│       │   └── events.rs
+│       └── transcript/
+│           ├── mod.rs
+│           ├── commands.rs
+│           └── dto.rs
+└── src/
+    └── sections/
+        ├── recording/
+        └── transcript/
+```
+
 ### 5.1. Le compilateur monte la garde
 
 Les flèches entre tiers sont écrites dans le `Cargo.toml` de chaque crate. Si `core` ne déclare pas `tauri` comme dépendance, alors `use tauri::Manager;` dans `core` est une erreur de compilation. C'est la garantie la plus forte qu'une règle puisse avoir : on ne peut ni l'oublier, ni la sauter en revue, ni la contester.
@@ -193,7 +287,7 @@ Une slice existe dans deux tiers : son domaine dans `core`, et son point d'entr�
 
 ### 6.1. Une slice dans `core`
 
-```
+```tree
 core/src/<slice>/
   mod.rs        public API of the slice: only `mod …;` and `pub use …;`
   model.rs      domain types, state enums, identifiers; no I/O, no async
@@ -226,7 +320,7 @@ pub use service::TranscriptService;
 
 ### 6.2. Une slice dans `app`
 
-```
+```tree
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
@@ -236,7 +330,7 @@ app/src/<slice>/
 
 Le reste de la crate `app` :
 
-```
+```tree
 app/src/
   main.rs       calls lib::run(); nothing else
   lib.rs        run(): Builder, plugins, setup, generate_handler! with every command, grouped by slice
@@ -393,7 +487,7 @@ Dans tous les autres cas, utilisez un simple `service.rs`. Toutes les fonctionna
 
 ### 9.2. Fichiers
 
-```
+```tree
 core/src/<slice>/actor/
   mod.rs        pub use Handle, Msg, Snapshot
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
@@ -694,7 +788,7 @@ La liste des plateformes prises en charge appartient au dépôt (à son guide de
 
 ### 12.1. Organisation
 
-```
+```tree
 drivers/src/platform/
   mod.rs          the only platform API: selects a file with #[cfg] and pub use; no logic
   unix.rs         shared by macOS and Linux: process groups, signals, file modes
@@ -865,7 +959,7 @@ Le test d'un message affiché à une personne se place là où cette personne le
 
 Chaque fichier placé directement dans `tests/` est un binaire séparé, et chaque binaire passe par sa propre édition de liens. Sur un gros workspace, cela fait une minute par fichier. Donnez à chaque crate **une seule** cible d'intégration, `tests/it/main.rs`, avec un module par sujet, et lancez un seul sujet avec un filtre :
 
-```
+```tree
 tests/it/
   main.rs          mod recording_stops_on_time_limit; mod transcript_survives_restart; …
   recording_stops_on_time_limit.rs
@@ -1232,7 +1326,7 @@ Elle est développée depuis deux ans par une petite équipe pressée, et elle f
 
 ### 20.1. Avant
 
-```
+```tree
 src-tauri/src/
   main.rs                 40 lines
   lib.rs                  2,300 lines   setup, 148 commands, emit helpers, menu
@@ -1388,7 +1482,7 @@ pub struct StartRecording {
 
 ### 20.4. Après
 
-```
+```tree
 Cargo.toml                       [workspace]
 crates/
   quayside-kit/                  paths, ids, durable_file, jobs, logging

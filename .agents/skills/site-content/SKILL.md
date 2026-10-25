@@ -71,6 +71,9 @@ description: Change what the MonoOne website says or shows — add or edit a pro
    fails when a language has a different number of sections. Subsection anchors are numbered
    (`#s9-4`), so keep the numbering and every `:::diagram` line. Code blocks stay identical in every language.
    The first paragraph of at least 60 characters becomes the page's search description.
+   Tag every code block with its language (`ts`, `tsx`, `vue`, `rust`, `toml`, `json`, `bash`, `yaml`,
+   `markdown`) so Shiki colors it (`app/utils/highlight.ts`); a folder layout uses `tree`. Code examples
+   carry no comments.
 3. A new diagram is a component in `app/components/blog/diagrams/` registered in `BlogProse.vue`.
    Give its SVG marker a fixed id (`slat-<name>-arrow`), not `useId()`: the ids differ between the
    prerendered page and the browser, and the arrowheads disappear.

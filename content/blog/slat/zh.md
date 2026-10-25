@@ -118,6 +118,100 @@ SLAT 的各个部分并不新。它组合了五个广为人知的思想，并把
 
 在本文中，`core/…` 和 `app/…` 是这两个 crate 源码文件夹的简写。`core/src/<slice>/` 即 `crates/<product>-core/src/<slice>/`，`app/src/<slice>/` 即 `src-tauri/src/<slice>/`，也就是 Tauri 为 app crate 创建的文件夹。第 16 节中的检查使用完整路径。
 
+一个完整的 SLAT 工作区：第 20 节的示例应用 Quayside 迁移之后的样子。
+
+```tree
+quayside/
+├── Cargo.toml
+├── package.json
+├── docs/
+│   └── slat/
+│       └── SLAT.md
+├── checks/
+│   ├── baselines/
+│   │   └── emit.txt
+│   ├── slat-commands.sh
+│   ├── slat-emit.sh
+│   ├── slat-platform.sh
+│   └── slat-pure-update.sh
+├── crates/
+│   ├── quayside-kit/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── ids.rs
+│   │       ├── paths.rs
+│   │       ├── durable_file.rs
+│   │       └── jobs.rs
+│   ├── quayside-store/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── writer.rs
+│   │       ├── schema.rs
+│   │       └── migrations/
+│   ├── quayside-drivers/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── whisper.rs
+│   │       ├── recorder.rs
+│   │       └── platform/
+│   │           ├── mod.rs
+│   │           ├── unix.rs
+│   │           ├── macos.rs
+│   │           └── unsupported.rs
+│   └── quayside-core/
+│       ├── Cargo.toml
+│       ├── src/
+│       │   ├── lib.rs
+│       │   ├── recording/
+│       │   │   ├── mod.rs
+│       │   │   ├── model.rs
+│       │   │   ├── logic.rs
+│       │   │   ├── service.rs
+│       │   │   └── actor/
+│       │   │       ├── mod.rs
+│       │   │       ├── msg.rs
+│       │   │       ├── state.rs
+│       │   │       ├── update.rs
+│       │   │       ├── effect.rs
+│       │   │       ├── run.rs
+│       │   │       ├── handle.rs
+│       │   │       └── snapshot.rs
+│       │   └── transcript/
+│       │       ├── mod.rs
+│       │       ├── model.rs
+│       │       ├── logic.rs
+│       │       ├── store.rs
+│       │       └── service.rs
+│       └── tests/
+│           └── it/
+│               ├── main.rs
+│               └── recording_stops_on_time_limit.rs
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   └── src/
+│       ├── main.rs
+│       ├── lib.rs
+│       ├── state.rs
+│       ├── error.rs
+│       ├── recording/
+│       │   ├── mod.rs
+│       │   ├── commands.rs
+│       │   ├── dto.rs
+│       │   └── events.rs
+│       └── transcript/
+│           ├── mod.rs
+│           ├── commands.rs
+│           └── dto.rs
+└── src/
+    └── sections/
+        ├── recording/
+        └── transcript/
+```
+
 ### 5.1. 编译器就是守卫
 
 层级之间的箭头写在每个 crate 的 `Cargo.toml` 中。如果 `core` 没有把 `tauri` 列为依赖，那么在 `core` 中写 `use tauri::Manager;` 就是编译错误。这是一条规则能拥有的最强保证：它不会被遗忘，不会在评审中被跳过，也无从争辩。
@@ -193,7 +287,7 @@ Tauri 打包器或用户数据已经知道的库名（例如 `quayside_lib`，�
 
 ### 6.1. `core` 中的切片
 
-```
+```tree
 core/src/<slice>/
   mod.rs        public API of the slice: only `mod …;` and `pub use …;`
   model.rs      domain types, state enums, identifiers; no I/O, no async
@@ -226,7 +320,7 @@ pub use service::TranscriptService;
 
 ### 6.2. `app` 中的切片
 
-```
+```tree
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
@@ -236,7 +330,7 @@ app/src/<slice>/
 
 `app` crate 的其余部分：
 
-```
+```tree
 app/src/
   main.rs       calls lib::run(); nothing else
   lib.rs        run(): Builder, plugins, setup, generate_handler! with every command, grouped by slice
@@ -392,7 +486,7 @@ pub fn spawn(app: AppHandle, recordings: recording::Handle) {
 
 ### 9.2. 文件
 
-```
+```tree
 core/src/<slice>/actor/
   mod.rs        pub use Handle, Msg, Snapshot
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
@@ -693,7 +787,7 @@ impl<K: Eq + Hash + Clone> Jobs<K> {
 
 ### 12.1. 布局
 
-```
+```tree
 drivers/src/platform/
   mod.rs          the only platform API: selects a file with #[cfg] and pub use; no logic
   unix.rs         shared by macOS and Linux: process groups, signals, file modes
@@ -864,7 +958,7 @@ impl From<RecordingError> for IpcError {
 
 直接放在 `tests/` 下的每个文件都是一个单独的二进制，每个二进制单独链接。在大型工作区中，这意味着每个文件一分钟。给每个 crate **一个**集成测试目标 `tests/it/main.rs`，每个主题一个模块，用过滤器运行单个主题：
 
-```
+```tree
 tests/it/
   main.rs          mod recording_stops_on_time_limit; mod transcript_survives_restart; …
   recording_stops_on_time_limit.rs
@@ -1231,7 +1325,7 @@ Quayside 是一个为本文**虚构**的桌面应用。它大致以我们所开�
 
 ### 20.1. 之前
 
-```
+```tree
 src-tauri/src/
   main.rs                 40 lines
   lib.rs                  2,300 lines   setup, 148 commands, emit helpers, menu
@@ -1387,7 +1481,7 @@ pub struct StartRecording {
 
 ### 20.4. 之后
 
-```
+```tree
 Cargo.toml                       [workspace]
 crates/
   quayside-kit/                  paths, ids, durable_file, jobs, logging

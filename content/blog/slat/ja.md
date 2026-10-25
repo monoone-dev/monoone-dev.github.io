@@ -118,6 +118,100 @@ SLATのワークスペースには、最大で5種類のcrateがあります。�
 
 この文書では、`core/…`と`app/…`は2つのcrateのソースフォルダーの略記です。`core/src/<slice>/`は`crates/<product>-core/src/<slice>/`のことであり、`app/src/<slice>/`は`src-tauri/src/<slice>/`、つまりTauriがアプリのcrateのために作るフォルダーのことです。セクション16のチェックは完全なパスを使います。
 
+完全な SLAT ワークスペースの例です。セクション 20 のサンプルアプリケーション Quayside の移行後の姿です。
+
+```tree
+quayside/
+├── Cargo.toml
+├── package.json
+├── docs/
+│   └── slat/
+│       └── SLAT.md
+├── checks/
+│   ├── baselines/
+│   │   └── emit.txt
+│   ├── slat-commands.sh
+│   ├── slat-emit.sh
+│   ├── slat-platform.sh
+│   └── slat-pure-update.sh
+├── crates/
+│   ├── quayside-kit/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── ids.rs
+│   │       ├── paths.rs
+│   │       ├── durable_file.rs
+│   │       └── jobs.rs
+│   ├── quayside-store/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── writer.rs
+│   │       ├── schema.rs
+│   │       └── migrations/
+│   ├── quayside-drivers/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── whisper.rs
+│   │       ├── recorder.rs
+│   │       └── platform/
+│   │           ├── mod.rs
+│   │           ├── unix.rs
+│   │           ├── macos.rs
+│   │           └── unsupported.rs
+│   └── quayside-core/
+│       ├── Cargo.toml
+│       ├── src/
+│       │   ├── lib.rs
+│       │   ├── recording/
+│       │   │   ├── mod.rs
+│       │   │   ├── model.rs
+│       │   │   ├── logic.rs
+│       │   │   ├── service.rs
+│       │   │   └── actor/
+│       │   │       ├── mod.rs
+│       │   │       ├── msg.rs
+│       │   │       ├── state.rs
+│       │   │       ├── update.rs
+│       │   │       ├── effect.rs
+│       │   │       ├── run.rs
+│       │   │       ├── handle.rs
+│       │   │       └── snapshot.rs
+│       │   └── transcript/
+│       │       ├── mod.rs
+│       │       ├── model.rs
+│       │       ├── logic.rs
+│       │       ├── store.rs
+│       │       └── service.rs
+│       └── tests/
+│           └── it/
+│               ├── main.rs
+│               └── recording_stops_on_time_limit.rs
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   └── src/
+│       ├── main.rs
+│       ├── lib.rs
+│       ├── state.rs
+│       ├── error.rs
+│       ├── recording/
+│       │   ├── mod.rs
+│       │   ├── commands.rs
+│       │   ├── dto.rs
+│       │   └── events.rs
+│       └── transcript/
+│           ├── mod.rs
+│           ├── commands.rs
+│           └── dto.rs
+└── src/
+    └── sections/
+        ├── recording/
+        └── transcript/
+```
+
 ### 5.1. コンパイラーが番人
 
 ティア間の矢印は、各crateの`Cargo.toml`に書かれます。`core`が依存関係に`tauri`を含めていなければ、`core`の中の`use tauri::Manager;`はコンパイルエラーになります。これはルールが持てる最も強い保証です。忘れられることも、レビューで見落とされることも、議論で覆されることもありません。
@@ -193,7 +287,7 @@ Tauriのバンドラーやユーザーのデータがすでに知っているラ
 
 ### 6.1. `core`のスライス
 
-```
+```tree
 core/src/<slice>/
   mod.rs        public API of the slice: only `mod …;` and `pub use …;`
   model.rs      domain types, state enums, identifiers; no I/O, no async
@@ -226,7 +320,7 @@ pub use service::TranscriptService;
 
 ### 6.2. `app`のスライス
 
-```
+```tree
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
@@ -236,7 +330,7 @@ app/src/<slice>/
 
 `app` crateの残りの部分です。
 
-```
+```tree
 app/src/
   main.rs       calls lib::run(); nothing else
   lib.rs        run(): Builder, plugins, setup, generate_handler! with every command, grouped by slice
@@ -393,7 +487,7 @@ pub fn spawn(app: AppHandle, recordings: recording::Handle) {
 
 ### 9.2. ファイル
 
-```
+```tree
 core/src/<slice>/actor/
   mod.rs        pub use Handle, Msg, Snapshot
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
@@ -694,7 +788,7 @@ impl<K: Eq + Hash + Clone> Jobs<K> {
 
 ### 12.1. 構成
 
-```
+```tree
 drivers/src/platform/
   mod.rs          the only platform API: selects a file with #[cfg] and pub use; no logic
   unix.rs         shared by macOS and Linux: process groups, signals, file modes
@@ -865,7 +959,7 @@ impl From<RecordingError> for IpcError {
 
 `tests/`の直下にあるファイルは、それぞれが別のバイナリであり、バイナリごとに別々にリンクされます。大きなワークスペースでは、ファイル1つにつき1分かかります。各crateには**1つ**の統合ターゲット`tests/it/main.rs`を持たせ、トピックごとに1つのモジュールにして、単一のトピックはフィルターで実行します。
 
-```
+```tree
 tests/it/
   main.rs          mod recording_stops_on_time_limit; mod transcript_survives_restart; …
   recording_stops_on_time_limit.rs
@@ -1232,7 +1326,7 @@ Quaysideは小さなチームが急ぎながら2年かけて作ってきたも�
 
 ### 20.1. 移行前
 
-```
+```tree
 src-tauri/src/
   main.rs                 40 lines
   lib.rs                  2,300 lines   setup, 148 commands, emit helpers, menu
@@ -1388,7 +1482,7 @@ pub struct StartRecording {
 
 ### 20.4. 移行後
 
-```
+```tree
 Cargo.toml                       [workspace]
 crates/
   quayside-kit/                  paths, ids, durable_file, jobs, logging

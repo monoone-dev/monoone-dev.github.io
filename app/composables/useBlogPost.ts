@@ -15,7 +15,7 @@ export function useBlogSection(post: BlogPost, number: number) {
       if (!load) {
         throw createError({ statusCode: 404, statusMessage: 'Post not found', fatal: true })
       }
-      const source = await load()
+      const [source] = await Promise.all([load(), loadHighlighter()])
       if (sectionCount(source) !== post.sections.length) {
         throw createError({
           statusCode: 500,
