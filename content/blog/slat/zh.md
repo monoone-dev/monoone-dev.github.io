@@ -6,7 +6,7 @@ SLAT 是一种组织桌面应用后端的模式，适用于用 Rust 编写、以
 
 各节编号是固定的。遵循 SLAT 的仓库会在 `docs/slat/SLAT.md` 中保存一份使用相同编号的规则简版，因此像“第 17.8 节”这样的引用，在本页和仓库中指的是同一处内容。两者不一致时，在同一天内一起修正。新的一节总是加在版本历史之前，版本历史始终位于最后。
 
-> **版本 1.2** · 2026年10月25日。1.2 版新增第 22 节 *构建和测试时间*：SLAT 工作区中的编译时间花在哪里、能缩短它的设置、如何只运行一次改动可能影响到的测试，以及哪些情况会让构建在不该重来时从头开始。它还为本指南的每条规则都配上了检查，包括 `logic.rs` 的纯度、切片之间的循环和 10 行命令。完整历史见第 23 节。
+> **版本 1.3** · 2026年10月25日。1.3 版新增第 23 节 *插件*，这是一个可选部分，面向允许用户开启和关闭功能的产品：什么时候一个功能是插件、关于方向的唯一一条规则（基础切片从不导入插件切片）、扩展点、一次构建加启动时的开关，以及让这一切名副其实的检查。没有插件的工作区无需任何改动。1.3 版还更正了指南其余部分中自相矛盾或留下未解问题的地方，从 22.1 中的测试命令到 9.4 中一个完整的示例 Actor。完整历史见第 24 节。
 
 ## 1. SLAT 为什么存在
 
@@ -83,10 +83,13 @@ Event:    actor/service ─► Snapshot | Event ─► app/events ─emit─► 
 | **快照（Snapshot）** | 窗口看到的 Actor 视图，通过 `watch` 通道发布。 | `select(…)` |
 | **入口（Entry）** | 外部世界调用后端的方式：Tauri 命令、MCP 服务器、本地桥接、远程中心。 | 页面组件 |
 | **查询（Query）** | 没有副作用的读取。 | selector |
-| **命令（Command）** | 状态的变更。 | action |
+| **命令（Command）** | 状态的变更。*Tauri 命令* 是另一回事：它是窗口调用的那个函数，可以执行一个查询，也可以执行一个命令。 | action |
 | **事件（Event）** | 后端在未被请求的情况下告知前端某些东西发生了变化。 | 推送到 store |
 | **平台（Platform）** | 我们为之构建的操作系统：`macos`、`linux`、`windows`。 | 浏览器目标 |
 | **平台契约（Platform contract）** | `drivers::platform` 中的一个函数，在每个操作系统上含义相同。 | polyfill |
+| **插件（Plugin）** | 用户可以开启或关闭的功能：一个或多个带清单（manifest）的切片（第 23 节，可选）。 | 懒加载的功能库 |
+| **基础切片（Base slice）** | 始终开启的切片；它从不导入插件切片。 | shell 库 |
+| **钩子（Hook）** | 基础切片提供、由插件用数据回应的扩展点。 | 带 `multi: true` 的注入令牌 |
 
 其中有三个概念容易混淆，所以请记住这个画面：**层级是一栋楼的楼层，切片是 `core` 这一层上的公寓，层是每套公寓里的房间。**
 
@@ -111,14 +114,14 @@ SLAT 的各个部分并不新。它组合了五个广为人知的思想，并把
 | 层级 | 这里放什么 | 可以依赖 | 绝不可以 |
 |---|---|---|---|
 | `kit` | 不含领域的共享类型和工具：标识符、时间、路径（`kit::paths`）、持久化文件写入、基础错误类型、日志。 | 仅外部库 | `tauri`、`tokio::process`、SQL、操作系统 `#[cfg]`、产品中的任何东西 |
-| `store` | 持久化：写连接、迁移、schema、索引重建、数据库加密。 | `kit` | `tauri`、领域逻辑、进程 |
+| `store` | 持久化：写连接和读连接、迁移、schema、索引重建、数据库加密。 | `kit` | `tauri`、领域逻辑、进程 |
 | `drivers` | 外部世界：进程、各提供商的命令行工具、HTTP、sidecar。依赖操作系统的代码只存在于 `drivers/src/platform/`。 | `kit` | `tauri`、`store`、领域逻辑 |
 | `core` | 所有领域切片：模型、逻辑、用例、Actor。 | `kit`、`store`、`drivers` | `tauri` |
 | `app` | 入口：Tauri 命令、DTO、事件、入口服务器（MCP、桥接）、应用状态、`setup`、`main`。 | 其他所有层级 | 领域逻辑（它属于 `core`） |
 
 在本文中，`core/…` 和 `app/…` 是这两个 crate 源码文件夹的简写。`core/src/<slice>/` 即 `crates/<product>-core/src/<slice>/`，`app/src/<slice>/` 即 `src-tauri/src/<slice>/`，也就是 Tauri 为 app crate 创建的文件夹。第 16 节中的检查使用完整路径。
 
-一个完整的 SLAT 工作区：第 20 节的示例应用 Quayside 迁移之后的样子。
+SLAT 工作区的形态：第 20 节的示例应用 Quayside 迁移之后的样子，缩减为两个切片和四个检查。第 20.4 节列出了它的全部切片。
 
 ```tree
 quayside/
@@ -218,8 +221,9 @@ quayside/
 
 一个最小的工作区：
 
+`Cargo.toml`:
+
 ```toml
-# Cargo.toml (workspace root)
 [workspace]
 resolver = "3"
 members = ["crates/*", "src-tauri"]
@@ -230,8 +234,9 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 ```
 
+`crates/quayside-core/Cargo.toml`:
+
 ```toml
-# crates/quayside-core/Cargo.toml
 [package]
 name = "quayside-core"
 version = "0.1.0"
@@ -246,8 +251,9 @@ serde.workspace = true
 thiserror.workspace = true
 ```
 
+`src-tauri/Cargo.toml`:
+
 ```toml
-# src-tauri/Cargo.toml — the app tier keeps the name the bundler already knows
 [package]
 name = "quayside"
 version = "0.1.0"
@@ -324,7 +330,7 @@ pub use service::TranscriptService;
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
-  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
+  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>, From<error> for IpcError
   events.rs     event names and payloads sent to the window; snapshot subscription loops
 ```
 
@@ -397,7 +403,7 @@ pub fn run() {
 | `store.rs` | `model`、`store` crate | `drivers`、`service`、其他切片的 `logic` |
 | `service.rs` | `model`、`logic`、`store.rs`、`drivers`、其他切片的公共 API | `tauri`、全局状态 |
 | `actor/*` | `model`、`logic`、`service`、`drivers` | `tauri`；此外 `update.rs` 不得有 I/O |
-| `app/<slice>/dto.rs` | 本切片的 `model` | `service`、`store` |
+| `app/<slice>/dto.rs` | 本切片的 `model` 和错误类型、`IpcError` | `service`、`store` |
 | `app/<slice>/commands.rs` | 本切片的公共 API、`dto`、`AppState` | `store`、`drivers`、`logic` |
 
 ### 7.2. 切片之间
@@ -446,8 +452,9 @@ window ─invoke─► commands ─► Handle.send(Msg)
 
 事件**只**从 `app/<s>/events.rs` 发出。`core` 中的切片通过 `watch::Sender<Snapshot>` 或 `broadcast::Sender<Event>` 发布变化。`events.rs` 订阅它们并调用 `emit`。这让 `core` 对窗口一无所知，也让前端对每个切片的事件来源只有一个位置。事件名遵循 `<slice>:<event>`，例如 `recording:snapshot`。
 
+`app/src/recording/events.rs`:
+
 ```rust
-// app/src/recording/events.rs
 pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -488,7 +495,7 @@ pub fn spawn(app: AppHandle, recordings: recording::Handle) {
 
 ```tree
 core/src/<slice>/actor/
-  mod.rs        pub use Handle, Msg, Snapshot
+  mod.rs        pub use Deps, Handle, Msg, Snapshot, spawn
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
   state.rs      struct State: the only place where the state exists
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
@@ -514,8 +521,9 @@ core/src/<slice>/actor/
 
 一个录音 Actor：启动录音进程，执行时间限制，并且可以停止（保留文件）或取消（丢弃文件）。所有类型名和函数名仅作示意。
 
+`msg.rs`:
+
 ```rust
-// msg.rs
 pub enum Msg {
     Start { title: String, limit: Duration },
     Started { generation: u64, pid: ProcessId },
@@ -524,11 +532,13 @@ pub enum Msg {
     Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
+    Failed { generation: u64 },
 }
 ```
 
+`state.rs`:
+
 ```rust
-// state.rs
 #[derive(Default)]
 pub struct State {
     pub generation: u64,
@@ -546,6 +556,7 @@ pub enum Phase {
     Stopping,
     Saved(RecordingFile),
     Cancelled,
+    Failed,
 }
 
 impl Phase {
@@ -555,19 +566,52 @@ impl Phase {
 }
 ```
 
+`effect.rs`:
+
 ```rust
-// effect.rs
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
-    StopRecorder { pid: ProcessId },
-    CancelRecorder { pid: ProcessId },
+    StopRecorder { generation: u64, pid: ProcessId },
+    CancelRecorder { generation: u64, pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
-    Persist(RecordingFile),
+    Persist { generation: u64, file: RecordingFile },
+}
+
+#[derive(Clone)]
+pub struct Deps {
+    pub recorder: drivers::recorder::Recorder,
+    pub recordings: Arc<RecordingStore>,
+}
+
+pub async fn execute(effect: Effect, deps: &Deps) -> Option<Msg> {
+    match effect {
+        Effect::SpawnRecorder { generation, title } => Some(match deps.recorder.start(&title).await {
+            Ok(pid) => Msg::Started { generation, pid },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StopRecorder { generation, pid } => Some(match deps.recorder.stop(pid).await {
+            Ok(file) => Msg::Ended { generation, outcome: Outcome::Done(file) },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::CancelRecorder { generation, pid } => Some(match deps.recorder.discard(pid).await {
+            Ok(()) => Msg::Ended { generation, outcome: Outcome::Cancelled },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StartTimer { generation, after } => {
+            tokio::time::sleep(after).await;
+            Some(Msg::TimedOut { generation })
+        }
+        Effect::Persist { generation, file } => match deps.recordings.save(&file).await {
+            Ok(()) => None,
+            Err(_) => Some(Msg::Failed { generation }),
+        },
+    }
 }
 ```
 
+`update.rs`:
+
 ```rust
-// update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Start { title, limit } if !state.phase.is_active() => {
@@ -593,7 +637,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::StopRecorder { pid }]
+                    vec![Effect::StopRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -602,7 +646,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::CancelRecorder { pid }]
+                    vec![Effect::CancelRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -612,13 +656,18 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match outcome {
                 Outcome::Done(file) => {
                     state.phase = Phase::Saved(file.clone());
-                    vec![Effect::Persist(file)]
+                    vec![Effect::Persist { generation, file }]
                 }
                 Outcome::Cancelled => {
                     state.phase = Phase::Cancelled;
                     vec![]
                 }
             }
+        }
+        Msg::Failed { generation } if generation == state.generation => {
+            state.phase = Phase::Failed;
+            state.level_db = None;
+            vec![]
         }
         _ => vec![],
     }
@@ -627,8 +676,11 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 
 只要没有正在进行的录音，就可以开始新的录音，包括在之前的录音已保存或已取消之后。最后一个分支正是代数的意义所在：来自之前某次录音的 `Level`、`TimedOut` 或 `Ended` 消息带着旧的代数到达，不会改变任何东西。
 
+录音进行中时收到的 `Start` 同样不会改变任何东西。这时窗口不会提供 Start，因为快照表明有录音正在进行；需要答复的调用方使用带 oneshot 的 `ask`（9.2）。当录音进程无法启动、停止或保存时，`Failed` 就是结局。驱动在返回这个错误之前，已经终止了进程并证明它已结束（17.5），所以 `Failed` 从不会留下仍在运行的录音进程。
+
+`run.rs`:
+
 ```rust
-// run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
@@ -647,15 +699,23 @@ pub fn spawn(deps: Deps) -> Handle {
                     }
                 });
             }
-            snapshot_tx.send_replace(Snapshot::from(&state));
+            let next = Snapshot::from(&state);
+            snapshot_tx.send_if_modified(|current| {
+                let changed = *current != next;
+                if changed {
+                    *current = next;
+                }
+                changed
+            });
         }
     });
     Handle::new(tx, snapshot_rx)
 }
 ```
 
+`handle.rs`:
+
 ```rust
-// handle.rs
 #[derive(Clone)]
 pub struct Handle {
     tx: mpsc::Sender<Msg>,
@@ -663,6 +723,10 @@ pub struct Handle {
 }
 
 impl Handle {
+    pub(super) fn new(tx: mpsc::Sender<Msg>, snapshot: watch::Receiver<Snapshot>) -> Self {
+        Self { tx, snapshot }
+    }
+
     pub async fn send(&self, msg: Msg) -> Result<(), ActorGone> {
         self.tx.send(msg).await.map_err(|_| ActorGone)
     }
@@ -676,6 +740,49 @@ impl Handle {
     }
 }
 ```
+
+`snapshot.rs`:
+
+```rust
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Snapshot {
+    pub generation: u64,
+    pub phase: Phase,
+    pub title: Option<String>,
+    pub level_db: Option<i8>,
+}
+
+impl From<&State> for Snapshot {
+    fn from(state: &State) -> Self {
+        Self {
+            generation: state.generation,
+            phase: state.phase.clone(),
+            title: state.title.clone(),
+            level_db: state.level_db.map(|db| db.round() as i8),
+        }
+    }
+}
+```
+
+`mod.rs`:
+
+```rust
+mod effect;
+mod handle;
+mod msg;
+mod run;
+mod snapshot;
+mod state;
+mod update;
+
+pub use effect::Deps;
+pub use handle::Handle;
+pub use msg::Msg;
+pub use run::spawn;
+pub use snapshot::Snapshot;
+```
+
+窗口从快照中取得 Stop 和 Cancel 所需的代数。循环只在快照变化时才发送它（`send_if_modified`），并且电平被取整到整分贝，所以每几毫秒报告一次的电平表不会把每次报告都变成发给窗口的事件。变化快于窗口绘制速度的值属于数据流（8.4），而不属于快照。
 
 循环只为自身效果的结果保留一个弱发送端。当最后一个 `Handle` 被 drop 时，`recv` 返回 `None`，Actor 随之结束，而不是永远等待下去。
 
@@ -701,14 +808,13 @@ fn a_late_timeout_from_an_earlier_recording_changes_nothing() {
 }
 ```
 
-少数测试通过 Actor 的句柄驱动整个 Actor，配合 `tokio::time::pause()`、一个假驱动，以及对快照序列的断言。
+少数测试通过 Actor 的句柄驱动整个 Actor，配合 `tokio::time::pause()`、一个数据接缝或一个假驱动（14.2），以及对快照序列的断言。
 
 ## 10. 变体爆炸
 
 像 `start_with_budget`、`start_with_slots`、`start_with_snapshot_hook`、`start_with_budget_and_slots` 这样的一族函数，说明缺少一个请求结构体。用一个入口函数和一个选项结构体替换这一族函数：
 
 ```rust
-#[derive(Default)]
 pub struct StartRequest {
     pub workflow: WorkflowRef,
     pub task: Option<String>,
@@ -719,12 +825,26 @@ pub struct StartRequest {
     pub faults: Faults,
 }
 
+impl StartRequest {
+    pub fn new(workflow: WorkflowRef) -> Self {
+        Self {
+            workflow,
+            task: None,
+            at_once: None,
+            budget: None,
+            origin: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            faults: Faults::default(),
+        }
+    }
+}
+
 pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>, StartError> {
     todo!()
 }
 ```
 
-调用方写成 `StartRequest { workflow, budget: Some(limit), ..Default::default() }`。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。单靠 `cfg(test)` 只覆盖该 crate 自己的单元测试，因此集成测试和其他 crate 通过 `test-hooks` feature 启用这些字段，思路与 14.2 中的伪驱动相同。在每个测试命令中都以同样的方式启用它（第 22.3 节）；否则，每次在启用该 feature 的构建和未启用的构建之间切换，都会重新编译这个 crate 以及它之上的一切。
+调用方写成 `StartRequest { budget: Some(limit), ..StartRequest::new(workflow) }`。请求不可缺少的字段是 `new` 的参数，因此没有工作流的请求无法编译；而 `Default` 会造出这样的请求。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。单靠 `cfg(test)` 只覆盖该 crate 自己的单元测试，因此集成测试和其他 crate 通过 `test-hooks` feature 启用这些字段，思路与 14.2 中的伪驱动相同。在每个测试命令中都以同样的方式启用它（第 22.3 节）；否则，每次在启用该 feature 的构建和未启用的构建之间切换，都会重新编译这个 crate 以及它之上的一切。
 
 ## 11. AppState：组合根
 
@@ -840,16 +960,18 @@ pub use unsupported::*;
 
 一个契约及其 macOS 实现的简短示例：
 
+`drivers/src/platform/macos.rs`:
+
 ```rust
-// drivers/src/platform/macos.rs
 pub fn open_path(path: &Path) -> Result<(), PlatformError> {
     let status = Command::new("/usr/bin/open").arg(path).status()?;
     status.success().then_some(()).ok_or(PlatformError::Refused("open"))
 }
 ```
 
+`drivers/src/platform/unsupported.rs`:
+
 ```rust
-// drivers/src/platform/unsupported.rs
 pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
     Err(PlatformError::Unsupported("open_path"))
 }
@@ -871,7 +993,7 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 
 ### 12.4. 路径、文件和文本
 
-- **文件夹只来自 `kit::paths`**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。其底层是一个遵循各系统约定的库（macOS 的 `~/Library/Application Support/<App>`、Linux 的 XDG、Windows 的 `%APPDATA%`）。已经存放在旧路径下的数据，在创建它的系统上继续留在原处（5.4 中的兼容性例外）；在那个系统上，`kit::paths` 返回旧路径，因此代码仍然只询问 `kit::paths`。`kit` 本身没有 `#[cfg]`：系统约定来自那个库。
+- **文件夹只来自 `kit::paths`**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。其底层是一个遵循各系统约定的库（macOS 的 `~/Library/Application Support/<App>`、Linux 的 XDG、Windows 的 `%APPDATA%`）。已经存放在旧路径下的数据继续留在原处（5.4 中的兼容性例外）：旧文件夹存在时，`kit::paths` 返回它，因此代码仍然只询问 `kit::paths`。这个选择取决于那个文件夹是否存在，而不取决于操作系统，所以 `kit` 本身没有 `#[cfg]`；系统约定来自那个库。
 - **应用创建的文件名一律小写**，并且绝不只靠大小写区分。macOS 和 Windows 的默认文件系统不区分大小写；Linux 区分。
 - **不要重命名或删除别人正打开着的文件。** Windows 会拒绝。原子写入通过 `kit::durable_file` 完成，它会在替换文件之前先关闭文件。
 - **长路径。** 不加 `\\?\` 前缀时，Windows 把路径限制在大约 260 个字符。让工作副本和运行文件夹的层级保持浅；前缀由 `platform` 添加，绝不由切片添加。
@@ -905,9 +1027,9 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 ## 13. 错误
 
 - **每个 crate 都有自己的错误枚举**（使用 `thiserror`）。切片可以在 `error.rs` 中有自己的错误枚举。
-- **`core` 返回领域错误。** `app/error.rs` 把它们转换成供窗口使用的代码和一句话。这句话来自你的翻译表，绝不来自线上枚举的 `Display`。
+- **`core` 返回领域错误。** `app/<slice>/dto.rs` 把切片的错误转换成供窗口使用的代码和句子键，与切片的其他线上类型放在一起。`app/error.rs` 只保存 `IpcError` 本身，因此新切片在自己的文件夹中添加它的错误，而不是在一个共享文件中。这句话来自你的翻译表，绝不来自线上枚举的 `Display`。
 - **来自线上的未知事件不是错误。** 在枚举上使用 `#[serde(other)]`，在非必需字段上使用 `Option<T>`。把未知的行记录到调试日志，然后继续。提供商命令行工具的新版本绝不能让一次运行停止。
-- 在 `core`、`store` 和 `drivers` 中，除测试外**禁止 `unwrap()` 和 `panic!`**。使用带错误变体的 `?`，或者带有原因说明（解释为什么该值不可能缺失）的 `expect()`。
+- 在 `kit`、`store`、`drivers` 和 `core` 中，除测试外**禁止 `unwrap()` 和 `panic!`**。使用带错误变体的 `?`，或者带有原因说明（解释为什么该值不可能缺失）的 `expect()`。
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -921,8 +1043,9 @@ pub enum RecordingError {
 }
 ```
 
+`app/src/error.rs`:
+
 ```rust
-// app/src/error.rs
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcError {
@@ -930,6 +1053,16 @@ pub struct IpcError {
     message_key: &'static str,
 }
 
+impl IpcError {
+    pub fn new(code: &'static str, message_key: &'static str) -> Self {
+        Self { code, message_key }
+    }
+}
+```
+
+`app/src/recording/dto.rs`:
+
+```rust
 impl From<RecordingError> for IpcError {
     fn from(error: RecordingError) -> Self {
         match error {
@@ -947,7 +1080,7 @@ impl From<RecordingError> for IpcError {
 |---|---|---|
 | `logic.rs`、`update.rs` | 普通的 `#[test]`，不用 tokio | 对某个值或效果列表的断言 |
 | `store.rs` | 临时文件夹中的数据库 | 读取返回的那一行 |
-| `service.rs` | `#[tokio::test]`，使用真实的 store 和假驱动 | 调用之后文件或数据库的状态 |
+| `service.rs` | `#[tokio::test]`，使用真实的 store 和数据接缝（14.2） | 调用之后文件或数据库的状态 |
 | `actor/` | 一个句柄加一段消息脚本；时间用 `tokio::time::pause` 控制 | `Snapshot` 的序列 |
 | `drivers` | 真实进程或录制下来的数据流 | 进程已结束（`ESRCH` 或空 job）、线上传来的行 |
 | `app/commands` | 不写单元测试；针对人看到的内容，通过入口进行端到端测试或集成测试 | 人看到的文字 |
@@ -1018,6 +1151,34 @@ proptest! {
 
 `messages(n)` 是测试模块中的一个策略（strategy），用来构建随机的 `Msg` 值；`Msg::generation()` 是一个小辅助函数，返回消息携带的代数。第 20.2 节中的泄漏正是这类测试能够自己找出的 bug：没有人需要事先想到引发它的消息顺序。
 
+### 14.5. 通过入口的测试
+
+人看到的那句话要通过入口来证明：真实的命令和真实的 `AppState`，不需要窗口。Tauri 的 `test` feature 有一个模拟运行时，它像窗口那样执行命令。这个测试是 `app` crate 的 `tests/it` 中的一个模块，并注册它所调用的命令：
+
+```rust
+#[test]
+fn reading_a_transcript_that_is_gone_says_so() {
+    let app = tauri::test::mock_builder()
+        .manage(support::app_state())
+        .invoke_handler(tauri::generate_handler![transcript::commands::transcript_read])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("the test app could not start");
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("the test window could not open");
+
+    let reply = tauri::test::get_ipc_response(
+        &window,
+        support::invoke("transcript_read", serde_json::json!({ "id": "gone" })),
+    );
+
+    let error = reply.expect_err("a missing transcript must be refused");
+    assert_eq!(support::english(&error["messageKey"]), "This transcript no longer exists.");
+}
+```
+
+`support::app_state()` 在一个临时文件夹上组装 `AppState`，`support::invoke` 用 `tauri::test::INVOKE_KEY` 构建 `tauri::webview::InvokeRequest`，`support::english` 在前端使用的同一个翻译文件中查找这个键。停在 `messageKey` 的测试只证明了映射；那句话才是证明。
+
 ## 15. 规模上限
 
 | 单元 | 警告阈值 | 怎么做 |
@@ -1038,17 +1199,18 @@ proptest! {
 |---|---|
 | 只有 `app` 知道 Tauri | `Cargo.toml`（其他地方没有 `tauri` 依赖）；针对传递依赖使用 `cargo-deny`（16.5） |
 | 层级只向下依赖 | `Cargo.toml` |
-| 只有 `store` 打开写连接 | grep 检查：`Connection::open` 只出现在 `store` crate 中。切片的 `store.rs` 文件会使用 `rusqlite` 类型，所以仅靠依赖关系不够。 |
-| `#[tauri::command]` 只在 `app/*/commands.rs` 中 | grep 检查 |
+| 只有 `store` 打开数据库连接 | `checks/slat-writer.sh`：`Connection::open` 只出现在 `store` crate 中，由它分发唯一的写连接和读连接。切片的 `store.rs` 接收这些连接并使用 `rusqlite` 类型，所以仅靠依赖关系不够。 |
+| `#[tauri::command]` 只在 `app/**/commands.rs` 中 | grep 检查 |
 | 每个命令都已注册 | 一个比对切片中的命令与 `generate_handler!` 的检查 |
-| `emit` 只在 `app/*/events.rs` 中 | grep 检查 |
+| `emit` 只在 `app/**/events.rs` 中 | grep 检查 |
 | 切片之间没有深层导入 | 检查来自其他切片的 `crate::<a>::<layer>::` |
-| `core` 中没有带状态的 `static` | grep 检查 `static .*(Mutex|RwLock)` |
+| `core` 中没有带状态的 `static` | grep 检查带有 `Mutex`、`RwLock` 或原子类型的 `static` |
+| Actor 内部没有锁 | grep 检查：`actor/` 下没有 `Mutex` 或 `RwLock` |
 | `logic.rs` 和 `update.rs` 没有 I/O | 检查：`logic.rs`、`logic/` 和 `update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::`、`drivers::` |
 | 切片的 `mod.rs` 只包含 `mod …;` 和 `pub use …;` | 对 `core/src/` 下每个 `mod.rs` 的检查 |
 | 切片之间没有循环 | 一个根据导入构建切片图并对其排序的检查 |
-| Tauri 命令最多 10 行 | 对 `app/*/commands.rs` 的检查 |
-| `core`、`store`、`drivers` 中除测试外没有 `unwrap()` 和 `panic!` | Clippy lint `unwrap_used` 和 `panic`（16.5） |
+| Tauri 命令最多 10 行 | 对 `app/**/commands.rs` 的检查 |
+| `kit`、`store`、`drivers`、`core` 中除测试外没有 `unwrap()` 和 `panic!` | Clippy lint `unwrap_used` 和 `panic`（16.5） |
 | 操作系统相关代码只在 `drivers/src/platform/` 和 `app/src/platform.rs` 中 | 使用 12.3 中列表的 grep 检查 |
 | 除 `app` 外的 crate 在每个平台上都能编译 | 在 Ubuntu 和 Windows CI runner 上运行 `cargo check` |
 | 规模上限 | 一个带基线列表的检查，列表只能缩短 |
@@ -1065,7 +1227,7 @@ set -euo pipefail
 
 baseline="checks/baselines/emit.txt"
 found="$(grep -rln --include='*.rs' -E '\.emit(_to)?\(' crates src-tauri/src \
-  | grep -vE '^src-tauri/src/[a-z_]+/events\.rs$' | sort || true)"
+  | grep -vE '^src-tauri/src/([a-z_]+/)+events\.rs$' | sort || true)"
 
 new="$(comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
 fixed="$(comm -13 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
@@ -1111,29 +1273,48 @@ jobs:
 
 | 检查 | 规则 |
 |---|---|
-| `checks/slat-commands.sh` | `#[tauri::command]` 只在 `src-tauri/src/*/commands.rs` 中 |
+| `checks/slat-commands.sh` | `#[tauri::command]` 只在 `src-tauri/src/**/commands.rs` 中 |
 | `checks/slat-registered.sh` | 切片中的每个命令都出现在 `generate_handler!` 中 |
-| `checks/slat-emit.sh` | `emit` 只在 `src-tauri/src/*/events.rs` 中 |
+| `checks/slat-emit.sh` | `emit` 只在 `src-tauri/src/**/events.rs` 中 |
+| `checks/slat-writer.sh` | `Connection::open` 只在 `crates/*-store` 中 |
 | `checks/slat-deep-imports.sh` | 没有来自其他切片的 `crate::<slice>::<layer>::` |
-| `checks/slat-static-state.sh` | `crates/*-core*` 中没有 `static … Mutex|RwLock` |
+| `checks/slat-static-state.sh` | `crates/*-core*` 中没有带有 `Mutex`、`RwLock` 或原子类型的 `static` |
+| `checks/slat-actor-lock.sh` | `actor/` 下没有 `Mutex` 或 `RwLock` |
 | `checks/slat-pure.sh` | `logic.rs`、`logic/` 和 `update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::`、`drivers::` |
 | `checks/slat-slice-mod.sh` | 切片的 `mod.rs` 只包含 `mod …;` 和 `pub use …;` |
+| `checks/slat-edges.sh` | 打印切片图，每行一个 `<slice> <imported slice>` |
 | `checks/slat-slice-cycles.sh` | 切片之间没有循环 |
 | `checks/slat-command-size.sh` | 每个 `#[tauri::command]` 最多 10 行 |
 | `checks/slat-platform.sh` | `platform/` 之外适用 12.3 中的禁止项 |
 | `checks/slat-size.sh` | 基线中超过 1,500 行的文件只能缩小 |
 
-循环检查不需要图库。`core/src/<slice>/` 中的每个 `use crate::<other>` 都是一条边，而 `tsort` 会在错误输出中报告带环的图：
+循环检查不需要图库。`checks/slat-edges.sh` 打印切片图：`core/src/<slice>/` 中的每个 `crate::<other>` 都是一条边，包括 `use crate::{run::Run, plan::Plan};` 这样的分组导入，跨越多行时也一样。嵌套分组（`crate::{run::{Run, Step}, plan}`）会丢掉内层分组之后的名称；那正是 `ast-grep` 规则（16.5）接手的地方。
+
+`checks/slat-edges.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-core="crates/quayside-core/src"
-edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
-  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
-  | awk '$1 != $2 && NF == 2' | sort -u)"
+core="${1:-crates/quayside-core/src}"
+find "$core" -mindepth 2 -name '*.rs' | sort | while read -r file; do
+  slice="${file#"$core"/}"
+  slice="${slice%%/*}"
+  { tr '\n' ' ' < "$file" \
+    | grep -oE 'crate::(\{[^}]*\}|[a-z_]+)' \
+    | grep -oE '(crate::|[{,] *)[a-z_]+' \
+    | sed -E 's/^(crate::|[{,] *)//' \
+    | sed "s/^/$slice /"; } || true
+done | awk '$1 != $2' | sort -u
+```
 
+`tsort` 会在错误输出中报告带环的图。`checks/slat-slice-cycles.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+edges="$(checks/slat-edges.sh crates/quayside-core/src)"
 loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
 if [ -n "$loops" ]; then
   printf '%s\n' "$loops"
@@ -1162,7 +1343,7 @@ panic = "deny"
 workspace = true
 ```
 
-第一段放在工作区根目录，第二段放进 `kit`、`store`、`drivers` 和 `core`。`app` crate 不继承它们。工作区根目录中一个包含 `allow-unwrap-in-tests = true` 和 `allow-panic-in-tests = true` 的 `clippy.toml` 让测试保持可读。crate 文件夹中的 `clippy.toml` 会取代根目录中的那个，所以它要重复这两行。`core` 中的 `clippy.toml` 可以列出 `disallowed-methods` 和 `disallowed-types`，例如 `std::process::Command` 和 `std::sync::Mutex`，这样从切片中启动进程或在 Actor 内部使用锁，就会成为 lint 错误，而不是 grep 匹配。
+第一段放在工作区根目录，第二段放进 `kit`、`store`、`drivers` 和 `core`。`app` crate 不继承它们。工作区根目录中一个包含 `allow-unwrap-in-tests = true` 和 `allow-panic-in-tests = true` 的 `clippy.toml` 让测试保持可读。crate 文件夹中的 `clippy.toml` 会取代根目录中的那个，所以它要重复这两行。`core` 中的 `clippy.toml` 可以列出 `disallowed-types`，例如 `std::process::Command`，这样从切片中启动进程就会成为 lint 错误，而不是 grep 匹配。不要把 `std::sync::Mutex` 列在那里：属于切片服务的缓存（9.1）需要一个短暂的锁，并且从不跨越 `await` 持有。不应存在的锁，即 Actor 内部的锁（9.3），由 `checks/slat-actor-lock.sh` 捕获。
 
 **`cargo-deny`，针对整个依赖图。** `Cargo.toml` 能阻止 `core` 中的 `use tauri::…`，却阻止不了一个从后门把 `tauri` 拉进来的库。这种泄漏在评审中看不见，而且会让 `core` 的测试去编译应用中最重的部分。`cargo-deny` 检查整个依赖图。在 `deny.toml` 中：
 
@@ -1240,8 +1421,11 @@ deny = [
 它是领域类型吗？                            → core/<s>/model.rs
 它是带 I/O 的一系列步骤吗？                 → core/<s>/service.rs
 它是在后台存活、由窗口观察的状态吗？        → core/<s>/actor/
+用户能否关闭它，而其余部分照常工作？        → 插件切片 (第 23 节)
 它完全没有领域（时间、路径、ID、文件）吗？  → kit
 ```
+
+第一个问题只关乎入口本身：命令、emit、MCP 服务器或远程中心的监听器。这样的入口所做的事情（配对、加密、桥接传递的消息、远程会话的规则）属于领域，位于入口调用的一个 `core` 切片中。
 
 ## 18. 与编码智能体协作
 
@@ -1256,9 +1440,9 @@ SLAT 是在一个大量代码由编码智能体编写的团队中设计出来的
 一段可以复制到你仓库贡献者指南（`AGENTS.md`、`CLAUDE.md` 或类似文件）中的内容：
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1267,6 +1451,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1361,7 +1547,7 @@ src-tauri/src/
 
 ### 20.2. 代码中的症状
 
-应用状态（节选）：
+应用状态，41 个字段中的 11 个：
 
 ```rust
 pub struct AppState {
@@ -1376,7 +1562,6 @@ pub struct AppState {
     pub sync_in_flight: AtomicBool,
     pub companion: Mutex<Option<CompanionHub>>,
     pub model_prices: Mutex<Option<(Instant, PriceList)>>,
-    // … 30 more
 }
 ```
 
@@ -1603,7 +1788,7 @@ SLAT 中最大的节省来自第 5 节：只有 `app` 知道 Tauri，因此其�
 
 - **库 crate 只编译，不链接。** 被链接的是每个二进制，在测试运行中则是每个测试二进制。
 - **每个 crate 可以有三类测试二进制：** 它的单元测试、直接位于 `tests/` 下的每个文件（第 14.1 节把它减为一个，`tests/it`），以及它的文档示例。从 edition 2024 起，一个 crate 的文档示例会构建为一个二进制。没有文档示例的 crate 在 `[lib]` 下设置 `doctest = false`。
-- **`app` 以下的测试运行从不需要 Tauri。** 日常命令是 `cargo nextest run --workspace --exclude quayside`。只有第 14 节的端到端测试才会构建 `app` crate。
+- **`app` 以下的测试运行从不需要 Tauri。** 日常命令是 `cargo t`（22.3），它运行除 `quayside` 之外的每个 crate。只有第 14 节的端到端测试才会构建 `app` crate。
 - **重型原生库比 Tauri 代价更高。** 由构建脚本编译的 C 和 C++ 源码，以及机器学习 crate，占去一次干净构建的大部分时间，也占去每个包含它们的二进制的大部分链接时间。第 5.3 节让它们远离 `core` 的测试。
 - **调试信息占链接时间的很大一部分。** 其中大部分从来没人读。
 
@@ -1662,7 +1847,7 @@ opt-level = 3
 t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
 ```
 
-所有人，包括智能体和 CI，都运行 `cargo t` 来跑整个测试套件，每个范围更窄的测试命令都是在 `cargo t` 后面加一个过滤器（22.4）。包列表或 feature 列表不同的测试命令就是第二次构建。
+所有人，包括智能体和 CI，都运行 `cargo t` 来跑整个测试套件，每个范围更窄的测试命令都是在 `cargo t` 后面加一个过滤器（22.4）。包列表或 feature 列表不同的测试命令就是第二次构建。只使用数据接缝（14.2）的工作区，要在这里和 22.4 的脚本中去掉 `--features quayside-drivers/fake`：如果别名指定了一个没人定义的 feature，它就会失败。
 
 ### 22.4. 只运行改动可能影响到的测试
 
@@ -1759,10 +1944,216 @@ Cargo 从不删除旧的产物。每个分支、每组 feature 和每个依赖�
 
 把它当作规则，而不是救急手段：当 `target/debug/deps` 超过几万个文件，或 `target/` 超过几十 GB 时，运行 `cargo clean`，接受一次冷构建。`cargo sweep --time 30` 是更温和的选择：它只删除 30 天内没有用过的产物。被删除的工作副本会连同它的 `target/` 一起消失。
 
-## 23. 版本历史
+## 23. 插件
+
+*1.3 版新增。可选。* 不需要插件的产品可以跳过本节。其他任何一节都不依赖它，没有插件的工作区也完全遵循 SLAT。
+
+插件是用户可以开启或关闭、而产品其余部分照常工作的功能。它让产品默认保持小巧，按用户的选择增长。在 SLAT 中，插件不是一种新的代码。它是一个或几个切片，加上一份清单（manifest），以及一条关于导入方向的额外规则。每个插件都编译进应用：关闭一个插件，意味着它在启动时不被组装，而不是它不在构建中。
+
+:::diagram plugins
+
+### 23.1. 什么时候一个功能是插件
+
+只有当以下**三条全部**成立时，才把一个功能做成插件：
+
+1. 没有它，产品依然有用；
+2. 关闭它不会丢失数据，也不会破坏其他功能，声明了需要它的插件除外；
+3. 由用户决定，而不是由构建、平台或发布渠道决定。
+
+| 候选 | 1 | 2 | 3 | 结论 |
+|---|---|---|---|---|
+| 把待办事项同步到团队看板 | 是 | 是 | 是 | 插件 |
+| 手机伴侣应用 | 是 | 是 | 是 | 插件 |
+| 录音 | 否，它就是产品本身 | — | — | 基础切片 |
+| 团队仍在测试的功能 | 是 | 是 | 否，由团队决定 | 一项设置，而不是插件 |
+| 只在 macOS 上存在的菜单 | — | — | 否，由平台决定 | 第 12 节 |
+| 带额外日志的构建 | — | — | 否，由构建决定 | Cargo profile |
+
+本节用两个词来称呼 `core` 中的切片。**基础切片**始终开启。**插件切片**属于某个插件。两者都位于 `core` 层级：“基础”说的是产品，“core”说的是 crate。
+
+### 23.2. 布局
+
+插件切片采用第 6 节的布局，并在每个层级多一个文件：
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+包含多个切片的插件，把清单放在以插件命名的那个切片中，其他切片是它的子切片（6.1）。
+
+清单是一个常量：
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`、`PluginId`、记录哪些插件已开启的文件，以及哪些插件可以同时开启的决策，都属于一个基础切片 `core/src/plugin/`。它有通常的文件，但没有 `plugin.rs`，因为它本身不是插件。只有 `app` 列出所有清单，因为只有 `app` 可以知道所有切片。这份列表位于 `app/src/plugins.rs`：
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. 方向
+
+让插件得以成立的规则：**基础切片从不导入插件切片。**
+
+| 来源 | 可以导入 |
+|---|---|
+| 基础切片 | 其他基础切片 |
+| 插件切片 | 基础切片；另一个插件切片，仅当该插件在它的 `needs` 中 |
+| `app` | 一切 |
+
+基础切片也不提及插件的名字：没有 `if on.contains("board")`，字符串中也没有插件 id。当基础需要插件帮忙时，它提供一个扩展点（23.4），并且不知道由谁来回应。所有插件都关闭时，基础照样能编译、启动并通过它的测试（23.8）。这让“关闭”名副其实。基础仍在调用插件的代码、只是把按钮藏起来，并不是关闭。
+
+`needs` 中没有循环，理由与 7.2 相同。
+
+### 23.4. 扩展点
+
+插件通过三种方式接入基础。按以下顺序优先选择。
+
+**1. 监听。** 基础已经通过它的 `Snapshot` 或 `Event` 通道发布变化（8.3）。插件在自己的服务或 Actor 中订阅，基础完全不需要改动。例如：看板插件订阅已完成的摘要，把其中的待办事项变成卡片。
+
+**2. 回应钩子。** 当基础必须在自身流程中的某一点提问时（“这份摘要还有什么要补充的吗？”），基础切片在它的 `hooks.rs` 中声明一个钩子，每个插件在自己的 `hooks.rs` 中回应它：
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+基础切片的服务在 `app` 组装它时接收自己的钩子，形式为 `Vec<Arc<dyn SummaryNotes>>`，并逐个询问。插件关闭时，列表为空，基础的行为与插件出现之前完全一样。
+
+钩子的三条规则：
+
+- **钩子立即用数据回答，不做 I/O。** 它不是 `async`。需要网络或进程才能回答的插件，在自己的服务或 Actor 中把答案准备好（这里是卡片的最新快照），钩子只读取它。基础从不等待插件，所以慢的插件拖慢不了基础。
+- **钩子不替基础做决定。** 它返回材料，如何处理这些材料，是基础切片 `logic.rs` 中的决策。可能拒绝某件事的钩子（访问门控、预算）就是策略，而策略是一个基础切片（6.5）：插件以数据的形式给它添加规则，由基础切片做决定。
+- **钩子 trait 是唯一允许只有一个实现的 trait。** 第 4 节和 14.2 禁止在出现两个实现之前写 trait，因为在那之前它什么也没有抽象。钩子不同：没有它，基础就不得不导入插件。每个钩子 trait 都位于一个 `hooks.rs` 中，所以这个例外很容易找到，也很容易检查（23.10）。
+
+**3. 拥有入口。** 插件的命令、DTO、事件以及窗口之外的入口（doors）位于 `app/src/<plugin>/` 中，与任何其他切片一样。基础从不调用它们。
+
+### 23.5. 开启与关闭
+
+- **一次构建。** 插件不是 Cargo feature。每个插件一个 feature，会让每种插件组合都成为单独的构建和单独的一套测试（22.3），而且用户无法切换 feature。
+- **选择是一个文件。** `plugin` 切片把已开启的插件集合保存在 `kit::paths::config()` 下的一个文件中，并在启动时读取一次。文件不存在时，每个插件取其 `on_by_default`。
+- **`app` 只组装已开启的部分。** 关闭的插件没有服务、没有 Actor、没有钩子，也没有事件循环。它在 `AppState` 中的字段如实说明这一点，形态与第 11 节中的 account 相同：
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+插件关闭时，`on.start` 不调用闭包，直接返回 `Err(PluginOff)`。
+
+- **关闭的插件的命令仍然注册。** `generate_handler!` 在应用编译时就已固定，所以命令存在并会作答。`From<PluginOff> for IpcError`（第 13 节）给窗口返回代码 `plugin_off`，命令仍然只有一行逻辑：`state.boards.as_ref()?.send(…)`。
+- **改动在下次启动时生效**，窗口会用一句话说明这一点。实时切换意味着插件注册表变成一个 Actor（它满足 9.1 的全部三个条件），而且每个钩子列表都可能在基础运行时改变。只有当重启确实是个问题时才这样做。
+- **关闭从不删除。** 插件的文件留在原处，它的表留在 schema 中，每个插件的迁移无论它是否开启都会运行，因此每种组合的 schema 都相同。删除插件的数据是用户单独要求的另一个操作。
+- **`needs` 是一个纯函数。** `plugin::logic::resolve(manifests, wanted)` 返回可以开启的插件集合，或缺少的那个依赖。开启一个其所需插件处于关闭状态的插件，或关闭一个被其他插件需要的插件，都会被拒绝，并附上一句点名另一个插件的话。用户把两者都切换。
+
+### 23.6. 前端
+
+SLAT 不规定前端（1.2），只规定边界，而插件跨越边界的方式与任何其他切片相同。`plugin` 切片有一个查询 `plugin_list`，返回每份清单及其状态，前端只在插件开启时显示它的界面。插件的前端文件夹使用插件的名字，与第 6 节一样。关闭的插件的界面根本不渲染；渲染后再用样式隐藏，并不是关闭。
+
+### 23.7. 独立 crate 中的插件
+
+当一个插件编译代价很高（5.3），或者你希望由编译器而不是检查来守护 23.3 时，把它移到 `<product>-plugin-<name>` 中。它依赖 `core`，`core` 不依赖它，`app` 依赖两者。这时 23.3 的规则就写在 `Cargo.toml` 中，与 5.1 一样，而 `deny.toml`（16.5）中的 `wrappers` 让其他所有 crate 远离它。它计入 5.3 中六到八个 crate 的数量，所以只对重型插件这样做，而不是对每个插件都这样做。
+
+### 23.8. 测试
+
+| 测什么 | 如何测试 | 什么算作证明 |
+|---|---|---|
+| 不带插件的基础 | 所有插件关闭时组装的 `AppState`；基础的端到端测试 | 人在基础中看到的文字，保持不变 |
+| `plugin::logic::resolve` | 普通的 `#[test]` | 插件集合，或缺少的依赖 |
+| 插件的钩子 | 对其实现的普通 `#[test]`，使用一个快照值 | 返回的数据 |
+| 带钩子的基础流程 | 基础服务，配上一个写在测试模块中的钩子 | 基础使用了钩子返回的内容 |
+| 关闭的插件的命令 | 通过入口 | 窗口针对 `plugin_off` 显示的那句话 |
+
+写在测试模块中的钩子就是钩子 trait 的第二个实现，所以钩子是最容易测试的扩展点。
+
+### 23.9. 把现有切片变成插件
+
+1. **测量。** 取 16.4 中循环检查的边，列出每个导入候选切片的基础切片。这些边就是插件检查的基线（16.1）。
+2. **反转每条边**，每个 pull request 一条：基础发布、插件监听（首选），或者基础声明一个钩子、插件回应它。移动和修复放在不同的 pull request 中（19.2）。
+3. **添加清单**、它在 `PLUGINS` 中的那一行，以及 `AppState` 中的 `Result<…, PluginOff>` 字段。设置 `on_by_default: true`，让今天使用该功能的人继续拥有它。
+4. **证明它。** 当基线为空时，在所有插件关闭的情况下运行基础的测试（23.8）。只有在那之后，插件才可以被关闭。
+
+### 23.10. 执行机制
+
+| 规则 | 由谁执行 |
+|---|---|
+| 基础切片从不导入插件切片 | 下面的 `checks/slat-plugins.sh`；独立 crate 中的插件则由 `Cargo.toml` 保证（23.7） |
+| 插件切片只在另一个插件位于其 `needs` 中时才导入它 | 同一个检查，对照清单中的 `needs` |
+| 基础切片中没有插件 id | 一个 grep 检查，在 `core/src/plugin/` 之外的基础切片中查找 `PluginId(` |
+| `core` 中只有一个实现的 trait 是 `hooks.rs` 中的钩子 | 一条 `ast-grep` 规则，查找 `core` 中 `hooks.rs` 之外的 `trait` 项（16.5），带基线列表；列表中的每个 trait 都有两个实现（14.2） |
+| 每份清单都在 `PLUGINS` 中 | 一个比对含 `plugin.rs` 的文件夹与 `app/src/plugins.rs` 的检查，类似 `slat-registered.sh` |
+| 所有插件关闭时基础仍能工作 | 23.8 中的测试，在 CI 中运行 |
+
+插件切片就是包含 `plugin.rs` 的文件夹。该检查复用 16.4 中的 `checks/slat-edges.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(checks/slat-edges.sh "$core")"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+在把切片变成插件的过程中（23.9），检查会减去它的基线，与 16.1 一样。
+
+### 23.11. 来自外部的插件
+
+由别人编写、在应用运行时加载的代码，不在 SLAT 的范围内。Rust 没有稳定的二进制接口，加载进进程的代码可能连带整个应用一起崩溃。来自外部的扩展作为独立进程运行，通过 `app/src/doors/` 中的一个入口与应用通信，例如一个 MCP 服务器，遵循与任何其他入口相同的规则。在应用内部，它是一个入口，而不是插件。
+
+## 24. 版本历史
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| 1.3 | 2026年10月25日 | 第 23 节 *插件*，可选：什么时候一个功能是插件、`plugin.rs` 中的清单、从不导入插件切片的基础切片、三种扩展点（监听、回应钩子、拥有入口）、钩子是唯一允许只有一个实现的 trait、一次构建并把选择放在启动时读取的文件中、`AppState` 中的 `Result<…, PluginOff>`、前端边界、独立 crate 中的插件、所有插件关闭时的测试、把现有切片变成插件、`checks/slat-plugins.sh`，以及作为入口的外部扩展。术语：插件、基础切片、钩子。决策树（17.8）和贡献者指南段落（18）提到了插件。版本历史从第 23 节移到第 24 节；第 1 到 22 节保持原有编号。更正：22.1 中的日常测试命令是 `cargo t`；`kit` 中同样禁止 `unwrap()` 和 `panic!`（13、16）；服务的缓存可以持有短暂的锁，Actor 内部的锁由一个新检查捕获（16.4、16.5）；`kit::paths` 根据旧路径是否存在来选择它，而不是根据操作系统（12.4）；用代码块之前的文件名代替代码块内的注释；第 5 节中的工作区树是缩短后的形态；测试表中加入数据接缝（9.5、14）；区分 *命令* 和 *Tauri 命令*（3）；区分入口和它背后的领域（17.8）；切片的错误在它自己的 `dto.rs` 中映射到 `IpcError`（6.2、7.1、13）；`store` 分发读连接，并有一个检查（5、16）；检查覆盖子切片（16.1、16.4）；`checks/slat-edges.sh` 能识别分组导入（16.4、23.10）；9.4 中的示例 Actor 是完整的（`Deps`、`execute`、`Snapshot`、`mod.rs`、`Failed`），并且只在快照变化时才发送它；用 `StartRequest::new` 代替 `Default`（10）；新增小节 14.5，通过入口的测试。 |
 | 1.2 | 2026年10月25日 | 第 22 节 *构建和测试时间*：编译时间花在哪里、构建设置（包括 `strip = false` 和经过优化的测试依赖）、一套 feature、运行改动可能影响到的测试、每个工作副本一个独立的 `target/` 并从写时复制克隆启动、只从 `main` 写入缓存的 CI、什么会让构建从头开始，以及清理 `target/`。重型原生驱动放在 `core` 不依赖的 crate 中（5.3）。新增小节 14.3（差异中的变异测试）、14.4（`update` 的属性测试）和 16.5（Clippy、`cargo-deny`、`ast-grep`）。为此前没有检查的规则加上检查：`logic.rs` 的纯度、切片的 `mod.rs`、切片之间的循环、10 行命令、`unwrap()` 和 `panic!`。优先使用数据接缝，而不是 `fake` feature。更正了 crate 的成本（5.2、5.3）、edition 2024 使用 `resolver = "3"`（5.1）、平台任务中的缓存步骤（16.3）。版本历史从第 22 节移到第 23 节；第 1 到 21 节保持原有编号。 |
 | 1.1 | 2026年10月25日 | 第 12 节 *平台*：`drivers` 中的 `platform/` 文件夹、平台契约、`platform/` 之外的禁止项、路径、文件和文本规则、平台测试、Linux 和 Windows 上的 CI 编译任务、移植配方。补充了层级、执行机制、配方和决策树的内容。 |
 | 1.0 | 2026年10月24日 | 第一版：层级、带固定层的切片、导入规则、数据流、Actor、作为组合根的应用状态、错误、测试、规模上限、执行机制、配方和迁移。 |

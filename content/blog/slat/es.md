@@ -6,7 +6,7 @@ Esta página es la referencia completa. Está escrita para que un equipo que nun
 
 Los números de sección son estables. Un repositorio que sigue SLAT guarda una copia breve de las reglas en `docs/slat/SLAT.md` con los mismos números, así que una referencia como «sección 17.8» significa lo mismo en esta página y en el repositorio. Cuando las dos difieren, ambas se corrigen el mismo día. Una sección nueva se añade justo antes del historial de versiones, que siempre queda al final.
 
-> **Versión 1.2** · 25 de octubre de 2026. La versión 1.2 añade la sección 22, *Tiempo de build y de tests*: adónde va el tiempo de compilación en un workspace SLAT, los ajustes que lo reducen, cómo ejecutar solo los tests a los que puede afectar un cambio y qué hace que un build vuelva a empezar cuando no debería. Además, da un check a cada regla de la guía, incluidas la pureza de `logic.rs`, los ciclos entre slices y el comando de 10 líneas. El historial completo está en la sección 23.
+> **Versión 1.3** · 25 de octubre de 2026. La versión 1.3 añade la sección 23, *Plugins*, una parte opcional para productos que permiten al usuario activar y desactivar funcionalidades: cuándo una funcionalidad es un plugin, la única regla sobre la dirección (un slice base nunca importa un slice de plugin), los puntos de extensión, un solo build con un interruptor al arrancar y los checks que lo mantienen honesto. Un workspace sin plugins no necesita ningún cambio. La versión 1.3 también corrige el resto de la guía donde se contradecía o dejaba una pregunta abierta, desde el comando de test de 22.1 hasta un actor de ejemplo completo en 9.4. El historial completo está en la sección 24.
 
 ## 1. Por qué existe SLAT
 
@@ -83,10 +83,13 @@ Seis frases para recordar:
 | **Snapshot** (instantánea) | Lo que la ventana ve de un actor, publicado a través de un canal `watch`. | `select(…)` |
 | **Entry** (entrada) | Una vía por la que el mundo exterior llama al backend: un comando de Tauri, un servidor MCP, un puente local, un hub remoto. | Un componente de pantalla |
 | **Query** (consulta) | Una lectura sin efectos secundarios. | Un selector |
-| **Command** (comando) | Un cambio de estado. | Una action |
+| **Command** (comando) | Un cambio de estado. Un *comando de Tauri* es otra cosa: la función que invoca la ventana, que puede ejecutar una query o un command. | Una action |
 | **Event** (evento) | El backend avisa al front-end de que algo ha cambiado, sin que se lo pidan. | Un push a un store |
 | **Platform** (plataforma) | Un sistema operativo para el que compilamos: `macos`, `linux`, `windows`. | Un navegador de destino |
 | **Platform contract** (contrato de plataforma) | Una función de `drivers::platform` que significa lo mismo en todos los sistemas operativos. | Un polyfill |
+| **Plugin** | Una funcionalidad que el usuario puede activar o desactivar: uno o varios slices con un manifiesto (sección 23, opcional). | Una librería de funcionalidad con carga diferida |
+| **Base slice** (slice base) | Un slice que siempre está activo; nunca importa un slice de plugin. | Una librería shell |
+| **Hook** (gancho) | Un punto de extensión que ofrece un slice base y que los plugins responden con datos. | Un injection token con `multi: true` |
 
 Tres de estos términos se confunden con facilidad, así que conviene tener presente esta imagen: **los tiers son las plantas de un edificio, los slices son los pisos de la planta `core` y las capas son las habitaciones de cada piso.**
 
@@ -111,14 +114,14 @@ Un workspace SLAT tiene como máximo cinco tipos de crates. Se llaman `<product>
 | Tier | Qué vive aquí | Puede depender de | Nunca |
 |---|---|---|---|
 | `kit` | Tipos y herramientas compartidos sin dominio: identificadores, tiempo, rutas (`kit::paths`), escrituras de archivos duraderas, el tipo de error base, logging. | solo librerías externas | `tauri`, `tokio::process`, SQL, `#[cfg]` de sistema operativo, nada del producto |
-| `store` | Persistencia: la conexión de escritura, migraciones, esquema, reconstrucción del índice, cifrado de la base de datos. | `kit` | `tauri`, lógica de dominio, procesos |
+| `store` | Persistencia: la conexión de escritura y las conexiones de lectura, migraciones, esquema, reconstrucción del índice, cifrado de la base de datos. | `kit` | `tauri`, lógica de dominio, procesos |
 | `drivers` | El mundo exterior: procesos, herramientas de línea de comandos de proveedores, HTTP, sidecars. El código que depende del sistema operativo vive solo en `drivers/src/platform/`. | `kit` | `tauri`, `store`, lógica de dominio |
 | `core` | Todos los slices de dominio: modelo, lógica, casos de uso, actores. | `kit`, `store`, `drivers` | `tauri` |
 | `app` | Entradas: comandos de Tauri, DTO, eventos, servidores de entrada (MCP, puente), el estado de la aplicación, `setup`, `main`. | todos los demás tiers | lógica de dominio (pertenece a `core`) |
 
 En este documento, `core/…` y `app/…` abrevian las carpetas de código fuente de esos dos crates. `core/src/<slice>/` es `crates/<product>-core/src/<slice>/`, y `app/src/<slice>/` es `src-tauri/src/<slice>/`, la carpeta que Tauri crea para el crate de la aplicación. Los checks de la sección 16 usan las rutas completas.
 
-Un workspace SLAT completo: Quayside, la aplicación de ejemplo de la sección 20, tras su migración.
+La forma de un workspace SLAT: Quayside, la aplicación de ejemplo de la sección 20, tras su migración, reducida a dos slices y cuatro checks. La sección 20.4 enumera todos sus slices.
 
 ```tree
 quayside/
@@ -218,8 +221,9 @@ Las flechas entre tiers están escritas en el `Cargo.toml` de cada crate. Si `co
 
 Un workspace mínimo:
 
+`Cargo.toml`:
+
 ```toml
-# Cargo.toml (workspace root)
 [workspace]
 resolver = "3"
 members = ["crates/*", "src-tauri"]
@@ -230,8 +234,9 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 ```
 
+`crates/quayside-core/Cargo.toml`:
+
 ```toml
-# crates/quayside-core/Cargo.toml
 [package]
 name = "quayside-core"
 version = "0.1.0"
@@ -246,8 +251,9 @@ serde.workspace = true
 thiserror.workspace = true
 ```
 
+`src-tauri/Cargo.toml`:
+
 ```toml
-# src-tauri/Cargo.toml — the app tier keeps the name the bundler already knows
 [package]
 name = "quayside"
 version = "0.1.0"
@@ -324,7 +330,7 @@ pub use service::TranscriptService;
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
-  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
+  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>, From<error> for IpcError
   events.rs     event names and payloads sent to the window; snapshot subscription loops
 ```
 
@@ -397,7 +403,7 @@ Un comando que existe en un slice pero falta en esta lista compila y, en silenci
 | `store.rs` | `model`, el crate `store` | `drivers`, `service`, `logic` de otros slices |
 | `service.rs` | `model`, `logic`, `store.rs`, `drivers`, la API pública de otros slices | `tauri`, estado global |
 | `actor/*` | `model`, `logic`, `service`, `drivers` | `tauri`; y `update.rs`, además, ninguna E/S |
-| `app/<slice>/dto.rs` | el `model` del slice | `service`, `store` |
+| `app/<slice>/dto.rs` | el `model` y el tipo de error del slice, `IpcError` | `service`, `store` |
 | `app/<slice>/commands.rs` | la API pública del slice, `dto`, `AppState` | `store`, `drivers`, `logic` |
 
 ### 7.2. Entre slices
@@ -446,8 +452,9 @@ window ─invoke─► commands ─► Handle.send(Msg)
 
 Los eventos se emiten **solo** desde `app/<s>/events.rs`. Un slice de `core` publica sus cambios a través de un `watch::Sender<Snapshot>` o de un `broadcast::Sender<Event>`. `events.rs` se suscribe y llama a `emit`. Así `core` no sabe nada de la ventana, y el front-end tiene exactamente un lugar del que llegan los eventos de cada slice. Los nombres de eventos siguen el formato `<slice>:<event>`, por ejemplo `recording:snapshot`.
 
+`app/src/recording/events.rs`:
+
 ```rust
-// app/src/recording/events.rs
 pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -489,7 +496,7 @@ En cualquier otro caso, usa un `service.rs` normal. No toda funcionalidad de NgR
 
 ```tree
 core/src/<slice>/actor/
-  mod.rs        pub use Handle, Msg, Snapshot
+  mod.rs        pub use Deps, Handle, Msg, Snapshot, spawn
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
   state.rs      struct State: the only place where the state exists
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
@@ -515,8 +522,9 @@ core/src/<slice>/actor/
 
 Un actor de grabación que lanza un proceso grabador, impone un límite de tiempo y se puede detener (el archivo se conserva) o cancelar (el archivo se descarta). Todos los nombres de tipos y funciones son ilustrativos.
 
+`msg.rs`:
+
 ```rust
-// msg.rs
 pub enum Msg {
     Start { title: String, limit: Duration },
     Started { generation: u64, pid: ProcessId },
@@ -525,11 +533,13 @@ pub enum Msg {
     Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
+    Failed { generation: u64 },
 }
 ```
 
+`state.rs`:
+
 ```rust
-// state.rs
 #[derive(Default)]
 pub struct State {
     pub generation: u64,
@@ -547,6 +557,7 @@ pub enum Phase {
     Stopping,
     Saved(RecordingFile),
     Cancelled,
+    Failed,
 }
 
 impl Phase {
@@ -556,19 +567,52 @@ impl Phase {
 }
 ```
 
+`effect.rs`:
+
 ```rust
-// effect.rs
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
-    StopRecorder { pid: ProcessId },
-    CancelRecorder { pid: ProcessId },
+    StopRecorder { generation: u64, pid: ProcessId },
+    CancelRecorder { generation: u64, pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
-    Persist(RecordingFile),
+    Persist { generation: u64, file: RecordingFile },
+}
+
+#[derive(Clone)]
+pub struct Deps {
+    pub recorder: drivers::recorder::Recorder,
+    pub recordings: Arc<RecordingStore>,
+}
+
+pub async fn execute(effect: Effect, deps: &Deps) -> Option<Msg> {
+    match effect {
+        Effect::SpawnRecorder { generation, title } => Some(match deps.recorder.start(&title).await {
+            Ok(pid) => Msg::Started { generation, pid },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StopRecorder { generation, pid } => Some(match deps.recorder.stop(pid).await {
+            Ok(file) => Msg::Ended { generation, outcome: Outcome::Done(file) },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::CancelRecorder { generation, pid } => Some(match deps.recorder.discard(pid).await {
+            Ok(()) => Msg::Ended { generation, outcome: Outcome::Cancelled },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StartTimer { generation, after } => {
+            tokio::time::sleep(after).await;
+            Some(Msg::TimedOut { generation })
+        }
+        Effect::Persist { generation, file } => match deps.recordings.save(&file).await {
+            Ok(()) => None,
+            Err(_) => Some(Msg::Failed { generation }),
+        },
+    }
 }
 ```
 
+`update.rs`:
+
 ```rust
-// update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Start { title, limit } if !state.phase.is_active() => {
@@ -594,7 +638,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::StopRecorder { pid }]
+                    vec![Effect::StopRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -603,7 +647,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::CancelRecorder { pid }]
+                    vec![Effect::CancelRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -613,13 +657,18 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match outcome {
                 Outcome::Done(file) => {
                     state.phase = Phase::Saved(file.clone());
-                    vec![Effect::Persist(file)]
+                    vec![Effect::Persist { generation, file }]
                 }
                 Outcome::Cancelled => {
                     state.phase = Phase::Cancelled;
                     vec![]
                 }
             }
+        }
+        Msg::Failed { generation } if generation == state.generation => {
+            state.phase = Phase::Failed;
+            state.level_db = None;
+            vec![]
         }
         _ => vec![],
     }
@@ -628,8 +677,11 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 
 Una grabación nueva puede empezar siempre que no haya nada en curso, también después de que una anterior se haya guardado o cancelado. La última rama es la razón de ser de las generaciones: un mensaje `Level`, `TimedOut` o `Ended` de una grabación anterior llega con una generación antigua y no cambia nada.
 
+Un `Start` mientras hay una grabación en curso tampoco cambia nada. La ventana no ofrece Start en ese momento, porque el snapshot dice que hay una grabación activa; quien necesite una respuesta usa `ask` con un oneshot (9.2). `Failed` es el final cuando el grabador no pudo arrancar, parar o guardar. Antes de que un driver devuelva ese error, ya ha matado el proceso y ha demostrado que está muerto (17.5), así que `Failed` nunca deja un grabador en marcha.
+
+`run.rs`:
+
 ```rust
-// run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
@@ -648,15 +700,23 @@ pub fn spawn(deps: Deps) -> Handle {
                     }
                 });
             }
-            snapshot_tx.send_replace(Snapshot::from(&state));
+            let next = Snapshot::from(&state);
+            snapshot_tx.send_if_modified(|current| {
+                let changed = *current != next;
+                if changed {
+                    *current = next;
+                }
+                changed
+            });
         }
     });
     Handle::new(tx, snapshot_rx)
 }
 ```
 
+`handle.rs`:
+
 ```rust
-// handle.rs
 #[derive(Clone)]
 pub struct Handle {
     tx: mpsc::Sender<Msg>,
@@ -664,6 +724,10 @@ pub struct Handle {
 }
 
 impl Handle {
+    pub(super) fn new(tx: mpsc::Sender<Msg>, snapshot: watch::Receiver<Snapshot>) -> Self {
+        Self { tx, snapshot }
+    }
+
     pub async fn send(&self, msg: Msg) -> Result<(), ActorGone> {
         self.tx.send(msg).await.map_err(|_| ActorGone)
     }
@@ -677,6 +741,49 @@ impl Handle {
     }
 }
 ```
+
+`snapshot.rs`:
+
+```rust
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Snapshot {
+    pub generation: u64,
+    pub phase: Phase,
+    pub title: Option<String>,
+    pub level_db: Option<i8>,
+}
+
+impl From<&State> for Snapshot {
+    fn from(state: &State) -> Self {
+        Self {
+            generation: state.generation,
+            phase: state.phase.clone(),
+            title: state.title.clone(),
+            level_db: state.level_db.map(|db| db.round() as i8),
+        }
+    }
+}
+```
+
+`mod.rs`:
+
+```rust
+mod effect;
+mod handle;
+mod msg;
+mod run;
+mod snapshot;
+mod state;
+mod update;
+
+pub use effect::Deps;
+pub use handle::Handle;
+pub use msg::Msg;
+pub use run::spawn;
+pub use snapshot::Snapshot;
+```
+
+La ventana toma del snapshot la generación que necesita para Stop y Cancel. El bucle envía un snapshot solo cuando ha cambiado (`send_if_modified`), y el nivel se redondea a decibelios enteros, así que un medidor que informa cada pocos milisegundos no convierte cada lectura en un evento para la ventana. Un valor que cambia más rápido de lo que la ventana puede dibujar pertenece a un flujo (8.4), no a un snapshot.
 
 El bucle guarda solo un emisor débil para los resultados de sus propios efectos. Cuando se suelta el último `Handle`, `recv` devuelve `None` y el actor termina en lugar de esperar para siempre.
 
@@ -702,14 +809,13 @@ fn a_late_timeout_from_an_earlier_recording_changes_nothing() {
 }
 ```
 
-Unos pocos tests manejan el actor completo a través de su `Handle` con `tokio::time::pause()`, un driver falso y aserciones sobre la secuencia de snapshots.
+Unos pocos tests manejan el actor completo a través de su `Handle` con `tokio::time::pause()`, una costura de datos o un driver falso (14.2) y aserciones sobre la secuencia de snapshots.
 
 ## 10. La explosión de variantes
 
 Una familia de funciones como `start_with_budget`, `start_with_slots`, `start_with_snapshot_hook`, `start_with_budget_and_slots` indica que falta un struct de petición. Sustituye la familia por una única función de entrada y un único struct de opciones:
 
 ```rust
-#[derive(Default)]
 pub struct StartRequest {
     pub workflow: WorkflowRef,
     pub task: Option<String>,
@@ -720,12 +826,26 @@ pub struct StartRequest {
     pub faults: Faults,
 }
 
+impl StartRequest {
+    pub fn new(workflow: WorkflowRef) -> Self {
+        Self {
+            workflow,
+            task: None,
+            at_once: None,
+            budget: None,
+            origin: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            faults: Faults::default(),
+        }
+    }
+}
+
 pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>, StartError> {
     todo!()
 }
 ```
 
-Quien llama escribe `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Una opción nueva es un campo nuevo, no una función nueva y una línea nueva en cada llamada. Los puntos de inyección solo para tests (`faults`, `hooks`) son campos que existen únicamente en un build de test. `cfg(test)` por sí solo cubre únicamente los tests unitarios del propio crate, así que los tests de integración y los demás crates activan esos campos con una feature `test-hooks`, la misma idea que el driver falso de 14.2. Actívala de la misma forma en todos los comandos de test (sección 22.3); si no, cada cambio entre un build con la feature y otro sin ella vuelve a compilar el crate y todo lo que está por encima.
+Quien llama escribe `StartRequest { budget: Some(limit), ..StartRequest::new(workflow) }`. Los campos sin los que una petición no puede existir son los argumentos de `new`, así que una petición sin workflow no compila; un `Default` crearía una. Una opción nueva es un campo nuevo, no una función nueva y una línea nueva en cada llamada. Los puntos de inyección solo para tests (`faults`, `hooks`) son campos que existen únicamente en un build de test. `cfg(test)` por sí solo cubre únicamente los tests unitarios del propio crate, así que los tests de integración y los demás crates activan esos campos con una feature `test-hooks`, la misma idea que el driver falso de 14.2. Actívala de la misma forma en todos los comandos de test (sección 22.3); si no, cada cambio entre un build con la feature y otro sin ella vuelve a compilar el crate y todo lo que está por encima.
 
 ## 11. AppState, la raíz de composición
 
@@ -841,16 +961,18 @@ Reglas de los contratos:
 
 Un ejemplo breve de un contrato y su lado de macOS:
 
+`drivers/src/platform/macos.rs`:
+
 ```rust
-// drivers/src/platform/macos.rs
 pub fn open_path(path: &Path) -> Result<(), PlatformError> {
     let status = Command::new("/usr/bin/open").arg(path).status()?;
     status.success().then_some(()).ok_or(PlatformError::Refused("open"))
 }
 ```
 
+`drivers/src/platform/unsupported.rs`:
+
 ```rust
-// drivers/src/platform/unsupported.rs
 pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
     Err(PlatformError::Unsupported("open_path"))
 }
@@ -872,7 +994,7 @@ La única excepción es `app/src/platform.rs`, para lo que solo conoce Tauri: el
 
 ### 12.4. Rutas, archivos y texto
 
-- **Las carpetas salen solo de `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Por debajo hay una librería que sigue la convención de cada sistema (macOS `~/Library/Application Support/<App>`, XDG en Linux, `%APPDATA%` en Windows). Los datos que ya viven en una ruta antigua se quedan allí en el sistema donde se crearon (la excepción de compatibilidad de 5.4); en ese sistema `kit::paths` devuelve la ruta antigua, así que el código sigue preguntando solo a `kit::paths`. `kit` en sí no tiene ningún `#[cfg]`: la convención del sistema la aporta la librería.
+- **Las carpetas salen solo de `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Por debajo hay una librería que sigue la convención de cada sistema (macOS `~/Library/Application Support/<App>`, XDG en Linux, `%APPDATA%` en Windows). Los datos que ya viven en una ruta antigua se quedan allí (la excepción de compatibilidad de 5.4): cuando la carpeta antigua existe, `kit::paths` la devuelve, así que el código sigue preguntando solo a `kit::paths`. La elección depende de si esa carpeta existe, no del sistema operativo, por eso `kit` en sí no tiene ningún `#[cfg]`; la convención del sistema la aporta la librería.
 - **Los nombres de archivo que crea la aplicación van en minúsculas** y nunca se diferencian solo por mayúsculas y minúsculas. Los sistemas de archivos por defecto de macOS y Windows no los distinguen; Linux sí.
 - **No renombres ni borres un archivo que alguien tiene abierto.** Windows lo rechaza. Las escrituras atómicas pasan por `kit::durable_file`, que cierra el archivo antes de sustituirlo.
 - **Rutas largas.** Windows limita las rutas a unos 260 caracteres sin el prefijo `\\?\`. Mantén poco profundas las copias de trabajo y las carpetas de ejecución; el prefijo lo añade `platform`, nunca un slice.
@@ -906,9 +1028,9 @@ Si un port exige un cambio en `core`, algo se ha filtrado. Primero, un pull requ
 ## 13. Errores
 
 - **Cada crate tiene su propio enum de errores** (con `thiserror`). Un slice puede tener el suyo en `error.rs`.
-- **`core` devuelve errores de dominio.** `app/error.rs` los convierte en un código y una frase para la ventana. La frase sale de tu tabla de traducciones, nunca del `Display` de un enum que llega por el cable.
+- **`core` devuelve errores de dominio.** `app/<slice>/dto.rs` convierte los errores del slice en un código y una clave de frase para la ventana, junto a los demás tipos que el slice envía por el cable. `app/error.rs` solo contiene `IpcError`, así que un slice nuevo añade sus errores en su propia carpeta, no en un archivo compartido. La frase sale de tu tabla de traducciones, nunca del `Display` de un enum que llega por el cable.
 - **Un evento desconocido que llega por el cable no es un error.** Usa `#[serde(other)]` en los enums y `Option<T>` en los campos que no son esenciales. Registra la línea desconocida para depuración y sigue adelante. Una nueva versión de la herramienta de línea de comandos de un proveedor nunca debe detener una ejecución.
-- **`unwrap()` y `panic!` están prohibidos** fuera de los tests en `core`, `store` y `drivers`. Usa `?` con una variante de error, o `expect()` con un motivo que explique por qué el valor no puede faltar.
+- **`unwrap()` y `panic!` están prohibidos** fuera de los tests en `kit`, `store`, `drivers` y `core`. Usa `?` con una variante de error, o `expect()` con un motivo que explique por qué el valor no puede faltar.
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -922,8 +1044,9 @@ pub enum RecordingError {
 }
 ```
 
+`app/src/error.rs`:
+
 ```rust
-// app/src/error.rs
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcError {
@@ -931,6 +1054,16 @@ pub struct IpcError {
     message_key: &'static str,
 }
 
+impl IpcError {
+    pub fn new(code: &'static str, message_key: &'static str) -> Self {
+        Self { code, message_key }
+    }
+}
+```
+
+`app/src/recording/dto.rs`:
+
+```rust
 impl From<RecordingError> for IpcError {
     fn from(error: RecordingError) -> Self {
         match error {
@@ -948,7 +1081,7 @@ impl From<RecordingError> for IpcError {
 |---|---|---|
 | `logic.rs`, `update.rs` | un `#[test]` normal, sin tokio | una aserción sobre un valor o sobre la lista de efectos |
 | `store.rs` | una base de datos en una carpeta temporal | la fila que devuelve una lectura |
-| `service.rs` | `#[tokio::test]` con un store real y un driver falso | el estado de los archivos o de la base de datos tras la llamada |
+| `service.rs` | `#[tokio::test]` con un store real y una costura de datos (14.2) | el estado de los archivos o de la base de datos tras la llamada |
 | `actor/` | un `Handle` más un guion de mensajes; el tiempo con `tokio::time::pause` | la secuencia de `Snapshot` |
 | `drivers` | un proceso real o un flujo grabado | el proceso está muerto (`ESRCH` o un job vacío), las líneas que llegan por el cable |
 | `app/commands` | ningún test unitario; un test end-to-end o de integración a través de la entrada, para lo que ve una persona | el texto que ve una persona |
@@ -1019,6 +1152,34 @@ proptest! {
 
 `messages(n)` es una estrategia del módulo de test que construye valores `Msg` aleatorios, y `Msg::generation()` es una pequeña función auxiliar que devuelve la generación que lleva un mensaje. La fuga de la sección 20.2 es exactamente el tipo de error que un test así encuentra por sí solo: nadie tiene que imaginar el orden de mensajes que la provoca.
 
+### 14.5. Un test a través de la entrada
+
+La frase que ve una persona se demuestra a través de la entrada: el comando real y un `AppState` real, sin ventana. La feature `test` de Tauri tiene un runtime simulado que ejecuta un comando igual que la ventana. El test es un módulo de `tests/it` del crate `app` y registra los comandos que llama:
+
+```rust
+#[test]
+fn reading_a_transcript_that_is_gone_says_so() {
+    let app = tauri::test::mock_builder()
+        .manage(support::app_state())
+        .invoke_handler(tauri::generate_handler![transcript::commands::transcript_read])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("the test app could not start");
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("the test window could not open");
+
+    let reply = tauri::test::get_ipc_response(
+        &window,
+        support::invoke("transcript_read", serde_json::json!({ "id": "gone" })),
+    );
+
+    let error = reply.expect_err("a missing transcript must be refused");
+    assert_eq!(support::english(&error["messageKey"]), "This transcript no longer exists.");
+}
+```
+
+`support::app_state()` monta `AppState` sobre una carpeta temporal, `support::invoke` construye la `tauri::webview::InvokeRequest` con `tauri::test::INVOKE_KEY`, y `support::english` busca la clave en el mismo archivo de traducciones que usa el front-end. Un test que se queda en `messageKey` solo demuestra el mapeo; la prueba es la frase.
+
 ## 15. Límites de tamaño
 
 | Unidad | Umbral de aviso | Qué hacer |
@@ -1039,17 +1200,18 @@ Primero el mecanismo, después las palabras. Una regla que un script puede compr
 |---|---|
 | solo `app` conoce Tauri | `Cargo.toml` (ninguna dependencia de `tauri` en otro sitio); `cargo-deny` para las dependencias transitivas (16.5) |
 | los tiers solo dependen hacia abajo | `Cargo.toml` |
-| solo `store` abre la conexión de escritura | un check con grep: `Connection::open` solo en el crate `store`. Los archivos `store.rs` de los slices usan tipos de `rusqlite`, así que la dependencia por sí sola no basta. |
-| `#[tauri::command]` solo en `app/*/commands.rs` | un check con grep |
+| solo `store` abre conexiones a la base de datos | `checks/slat-writer.sh`: `Connection::open` solo en el crate `store`, que reparte la única conexión de escritura y las conexiones de lectura. El `store.rs` de un slice las recibe y usa tipos de `rusqlite`, así que la dependencia por sí sola no basta. |
+| `#[tauri::command]` solo en `app/**/commands.rs` | un check con grep |
 | todos los comandos están registrados | un check que compara los comandos de los slices con `generate_handler!` |
-| `emit` solo en `app/*/events.rs` | un check con grep |
+| `emit` solo en `app/**/events.rs` | un check con grep |
 | ningún import profundo entre slices | un check que busca `crate::<a>::<layer>::` desde otro slice |
-| ningún `static` con estado en `core` | un check con grep de `static .*(Mutex|RwLock)` |
+| ningún `static` con estado en `core` | un check con grep de un `static` con `Mutex`, `RwLock` o un tipo atómico |
+| ningún bloqueo dentro de un actor | un check con grep: ningún `Mutex` ni `RwLock` bajo `actor/` |
 | `logic.rs` y `update.rs` no tienen E/S | un check: ni `async`, ni `tokio::`, ni `std::fs`, ni `store::`, ni `drivers::` en `logic.rs`, `logic/` y `update.rs` |
 | el `mod.rs` de un slice contiene solo `mod …;` y `pub use …;` | un check sobre cada `mod.rs` bajo `core/src/` |
 | ningún ciclo entre slices | un check que construye el grafo de slices a partir de los imports y lo ordena |
-| un comando de Tauri tiene como máximo 10 líneas | un check sobre `app/*/commands.rs` |
-| ni `unwrap()` ni `panic!` fuera de los tests en `core`, `store`, `drivers` | los lints de Clippy `unwrap_used` y `panic` (16.5) |
+| un comando de Tauri tiene como máximo 10 líneas | un check sobre `app/**/commands.rs` |
+| ni `unwrap()` ni `panic!` fuera de los tests en `kit`, `store`, `drivers`, `core` | los lints de Clippy `unwrap_used` y `panic` (16.5) |
 | el sistema operativo solo en `drivers/src/platform/` y `app/src/platform.rs` | un check con grep y la lista de 12.3 |
 | los crates distintos de `app` compilan en todas las plataformas | `cargo check` en runners de CI de Ubuntu y Windows |
 | límites de tamaño | un check con una lista base que solo puede reducirse |
@@ -1066,7 +1228,7 @@ set -euo pipefail
 
 baseline="checks/baselines/emit.txt"
 found="$(grep -rln --include='*.rs' -E '\.emit(_to)?\(' crates src-tauri/src \
-  | grep -vE '^src-tauri/src/[a-z_]+/events\.rs$' | sort || true)"
+  | grep -vE '^src-tauri/src/([a-z_]+/)+events\.rs$' | sort || true)"
 
 new="$(comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
 fixed="$(comm -13 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
@@ -1112,29 +1274,48 @@ En un repositorio real, fija las versiones de las actions con hashes de commit c
 
 | Check | Regla |
 |---|---|
-| `checks/slat-commands.sh` | `#[tauri::command]` solo en `src-tauri/src/*/commands.rs` |
+| `checks/slat-commands.sh` | `#[tauri::command]` solo en `src-tauri/src/**/commands.rs` |
 | `checks/slat-registered.sh` | cada comando de un slice aparece en `generate_handler!` |
-| `checks/slat-emit.sh` | `emit` solo en `src-tauri/src/*/events.rs` |
+| `checks/slat-emit.sh` | `emit` solo en `src-tauri/src/**/events.rs` |
+| `checks/slat-writer.sh` | `Connection::open` solo en `crates/*-store` |
 | `checks/slat-deep-imports.sh` | ningún `crate::<slice>::<layer>::` desde otro slice |
-| `checks/slat-static-state.sh` | ningún `static … Mutex|RwLock` en `crates/*-core*` |
+| `checks/slat-static-state.sh` | ningún `static` con `Mutex`, `RwLock` o un tipo atómico en `crates/*-core*` |
+| `checks/slat-actor-lock.sh` | ningún `Mutex` ni `RwLock` bajo `actor/` |
 | `checks/slat-pure.sh` | `logic.rs`, `logic/` y `update.rs` sin `async`, `tokio::`, `std::fs`, `store::`, `drivers::` |
 | `checks/slat-slice-mod.sh` | el `mod.rs` de un slice contiene solo `mod …;` y `pub use …;` |
+| `checks/slat-edges.sh` | imprime el grafo de slices, un par `<slice> <imported slice>` por línea |
 | `checks/slat-slice-cycles.sh` | ningún ciclo entre slices |
 | `checks/slat-command-size.sh` | cada `#[tauri::command]` tiene como máximo 10 líneas |
 | `checks/slat-platform.sh` | las prohibiciones de 12.3 fuera de `platform/` |
 | `checks/slat-size.sh` | los archivos de más de 1500 líneas de la lista base solo pueden reducirse |
 
-El check de ciclos no necesita ninguna librería de grafos. Cada `use crate::<other>` dentro de `core/src/<slice>/` es una arista, y `tsort` informa de un grafo con un bucle en su salida de error:
+El check de ciclos no necesita ninguna librería de grafos. `checks/slat-edges.sh` imprime el grafo de slices: cada `crate::<other>` dentro de `core/src/<slice>/` es una arista, incluidos los imports agrupados como `use crate::{run::Run, plan::Plan};`, también cuando ocupan varias líneas. Un grupo anidado (`crate::{run::{Run, Step}, plan}`) pierde los nombres que siguen a su grupo interior; ahí entra una regla de `ast-grep` (16.5).
+
+`checks/slat-edges.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-core="crates/quayside-core/src"
-edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
-  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
-  | awk '$1 != $2 && NF == 2' | sort -u)"
+core="${1:-crates/quayside-core/src}"
+find "$core" -mindepth 2 -name '*.rs' | sort | while read -r file; do
+  slice="${file#"$core"/}"
+  slice="${slice%%/*}"
+  { tr '\n' ' ' < "$file" \
+    | grep -oE 'crate::(\{[^}]*\}|[a-z_]+)' \
+    | grep -oE '(crate::|[{,] *)[a-z_]+' \
+    | sed -E 's/^(crate::|[{,] *)//' \
+    | sed "s/^/$slice /"; } || true
+done | awk '$1 != $2' | sort -u
+```
 
+`tsort` informa de un grafo con un bucle en su salida de error. `checks/slat-slice-cycles.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+edges="$(checks/slat-edges.sh crates/quayside-core/src)"
 loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
 if [ -n "$loops" ]; then
   printf '%s\n' "$loops"
@@ -1163,7 +1344,7 @@ panic = "deny"
 workspace = true
 ```
 
-El primer bloque va en la raíz del workspace, el segundo en `kit`, `store`, `drivers` y `core`. El crate `app` no los hereda. Un `clippy.toml` en la raíz del workspace con `allow-unwrap-in-tests = true` y `allow-panic-in-tests = true` mantiene legibles los tests. Un `clippy.toml` en la carpeta de un crate sustituye al de la raíz, así que repite esas dos líneas. Un `clippy.toml` en `core` puede enumerar `disallowed-methods` y `disallowed-types`, por ejemplo `std::process::Command` y `std::sync::Mutex`, para que un proceso lanzado desde un slice o un bloqueo dentro de un actor sea un error de lint, no una coincidencia de grep.
+El primer bloque va en la raíz del workspace, el segundo en `kit`, `store`, `drivers` y `core`. El crate `app` no los hereda. Un `clippy.toml` en la raíz del workspace con `allow-unwrap-in-tests = true` y `allow-panic-in-tests = true` mantiene legibles los tests. Un `clippy.toml` en la carpeta de un crate sustituye al de la raíz, así que repite esas dos líneas. Un `clippy.toml` en `core` puede enumerar `disallowed-types`, por ejemplo `std::process::Command`, para que un proceso lanzado desde un slice sea un error de lint, no una coincidencia de grep. No pongas ahí `std::sync::Mutex`: una caché que pertenece al servicio de un slice (9.1) necesita un bloqueo breve, nunca mantenido durante un `await`. El bloqueo que no debe existir, uno dentro de un actor (9.3), lo detecta `checks/slat-actor-lock.sh`.
 
 **`cargo-deny`, para todo el grafo de dependencias.** `Cargo.toml` impide `use tauri::…` en `core`, pero no una librería que mete `tauri` por la puerta de atrás. Esa fuga no se ve en una revisión, y hace que los tests de `core` compilen la parte más pesada de la aplicación. `cargo-deny` comprueba todo el grafo. En `deny.toml`:
 
@@ -1241,8 +1422,11 @@ Sección 12.7.
 ¿Es un tipo de dominio?                                        → core/<s>/model.rs
 ¿Es una secuencia de pasos con E/S?                            → core/<s>/service.rs
 ¿Es estado que vive en segundo plano y que la ventana observa? → core/<s>/actor/
+¿El usuario puede desactivarlo y el resto sigue funcionando?   → un slice de plugin (sección 23)
 ¿No tiene dominio alguno (tiempo, rutas, ids, archivos)?       → kit
 ```
+
+La primera pregunta trata solo de la entrada: el comando, el emit, la escucha de un servidor MCP o de un hub remoto. Lo que hace esa entrada (el emparejamiento, el cifrado, los mensajes que lleva un puente, las reglas de una sesión remota) es dominio, y vive en un slice de `core` al que llama la entrada.
 
 ## 18. Trabajar con agentes de código
 
@@ -1257,9 +1441,9 @@ Los agentes también cambian cómo se compila un workspace. Varios agentes en va
 Una sección que puedes copiar en la guía para contribuidores de tu repositorio (`AGENTS.md`, `CLAUDE.md` o equivalente):
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1268,6 +1452,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1362,7 +1548,7 @@ La medición del paso 1 de la migración:
 
 ### 20.2. Síntomas en el código
 
-El estado de la aplicación, abreviado:
+El estado de la aplicación, 11 de sus 41 campos:
 
 ```rust
 pub struct AppState {
@@ -1377,7 +1563,6 @@ pub struct AppState {
     pub sync_in_flight: AtomicBool,
     pub companion: Mutex<Option<CompanionHub>>,
     pub model_prices: Mutex<Option<(Instant, PriceList)>>,
-    // … 30 more
 }
 ```
 
@@ -1604,7 +1789,7 @@ Primero, mide. `cargo build --timings` escribe un informe HTML con el tiempo de 
 
 - **Un crate de librería se compila, no se enlaza.** Lo que se enlaza es cada binario y, en una ejecución de tests, cada binario de test.
 - **Cada crate puede tener tres tipos de binarios de test:** sus tests unitarios, cada archivo que está directamente en `tests/` (la sección 14.1 lo reduce a uno, `tests/it`) y sus ejemplos de documentación. Desde la edición 2024, los ejemplos de documentación de un crate se compilan como un solo binario. Un crate sin ejemplos de documentación pone `doctest = false` bajo `[lib]`.
-- **Una ejecución de tests por debajo de `app` nunca necesita Tauri.** El comando de cada día es `cargo nextest run --workspace --exclude quayside`. Solo los tests end-to-end de la sección 14 compilan el crate `app`.
+- **Una ejecución de tests por debajo de `app` nunca necesita Tauri.** El comando de cada día es `cargo t` (22.3), que ejecuta todos los crates menos `quayside`. Solo los tests end-to-end de la sección 14 compilan el crate `app`.
 - **Una librería nativa pesada cuesta más que Tauri.** Las fuentes en C y C++ que compilan los build scripts, y los crates de machine learning, se llevan la mayor parte de un build limpio y la mayor parte del enlazado de cada binario que los incluye. La sección 5.3 los mantiene fuera de los tests de `core`.
 - **La información de depuración es una gran parte del tiempo de enlazado.** La mayor parte nunca se lee.
 
@@ -1663,7 +1848,7 @@ Cargo compila una dependencia una vez por cada conjunto distinto de features que
 t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
 ```
 
-Todo el mundo, incluidos los agentes y CI, ejecuta `cargo t` para la suite completa, y cada comando de test más acotado es `cargo t` con un filtro añadido (22.4). Un comando de test con otra lista de paquetes o de features es un segundo build.
+Todo el mundo, incluidos los agentes y CI, ejecuta `cargo t` para la suite completa, y cada comando de test más acotado es `cargo t` con un filtro añadido (22.4). Un comando de test con otra lista de paquetes o de features es un segundo build. Un workspace que solo usa costuras de datos (14.2) quita `--features quayside-drivers/fake` aquí y en el script de 22.4: un alias que nombra una feature que nadie define falla.
 
 ### 22.4. Ejecutar lo que un cambio puede afectar
 
@@ -1760,10 +1945,216 @@ Cargo nunca borra los artefactos antiguos. Cada rama, conjunto de features y ver
 
 Hazlo una regla, no un rescate: cuando `target/debug/deps` pase de unas decenas de miles de archivos, o `target/` pase de unas decenas de gigabytes, ejecuta `cargo clean` y acepta un build en frío. `cargo sweep --time 30` es la opción más suave: elimina solo los artefactos que no se han usado en 30 días. Una copia de trabajo que se elimina se lleva su `target/` con ella.
 
-## 23. Historial de versiones
+## 23. Plugins
+
+*Nuevo en la versión 1.3. Opcional.* Un producto que no necesita plugins se salta esta sección. Ninguna otra sección depende de ella, y un workspace sin plugins sigue SLAT por completo.
+
+Un plugin es una funcionalidad que el usuario puede activar o desactivar mientras el resto del producto sigue funcionando igual. Permite que un producto sea pequeño por defecto y crezca por elección. En SLAT un plugin no es un tipo nuevo de código. Es un slice, o unos pocos, con un manifiesto y una regla más sobre la dirección de los imports. Todos los plugins se compilan dentro de la aplicación: desactivar uno significa que no se ensambla al arrancar, no que falte en el build.
+
+:::diagram plugins
+
+### 23.1. Cuándo una funcionalidad es un plugin
+
+Convierte una funcionalidad en plugin solo cuando se cumplan **las tres** condiciones:
+
+1. el producto es útil sin ella;
+2. desactivarla no pierde datos ni rompe otra funcionalidad, salvo los plugins que declararon que la necesitan;
+3. decide el usuario, no el build, la plataforma ni el canal de publicación.
+
+| Candidato | 1 | 2 | 3 | Veredicto |
+|---|---|---|---|---|
+| sincronizar las tareas pendientes con un tablero del equipo | sí | sí | sí | plugin |
+| aplicación complementaria para el teléfono | sí | sí | sí | plugin |
+| grabación | no, es el producto | — | — | slice base |
+| una funcionalidad que el equipo todavía está probando | sí | sí | no, decide el equipo | un ajuste, no un plugin |
+| un menú que solo existe en macOS | — | — | no, decide la plataforma | sección 12 |
+| un build con logging adicional | — | — | no, decide el build | un perfil de Cargo |
+
+Esta sección usa dos términos para los slices de `core`. Un **slice base** está siempre activo. Un **slice de plugin** pertenece a un plugin. Ambos viven en el tier `core`: «base» dice algo del producto, «core», del crate.
+
+### 23.2. Estructura
+
+Un slice de plugin tiene la estructura de la sección 6 y un archivo más en cada tier:
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+Un plugin con varios slices guarda su manifiesto en el slice que lleva su nombre, y los demás son sub-slices de ese slice (6.1).
+
+El manifiesto es una constante:
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`, `PluginId`, el archivo que recuerda qué plugins están activos y la decisión de qué plugins pueden estar activos a la vez pertenecen a un slice base, `core/src/plugin/`. Tiene los archivos habituales y ningún `plugin.rs`, porque no es un plugin. Solo `app` enumera todos los manifiestos, porque solo `app` puede conocer todos los slices. La lista vive en `app/src/plugins.rs`:
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. Dirección
+
+La regla que hace funcionar los plugins: **un slice base nunca importa un slice de plugin.**
+
+| Desde | Puede importar |
+|---|---|
+| un slice base | otros slices base |
+| un slice de plugin | slices base; otro slice de plugin solo cuando ese plugin está en sus `needs` |
+| `app` | todo |
+
+Un slice base tampoco nombra un plugin: nada de `if on.contains("board")`, ningún id de plugin en un string. Cuando la base necesita la ayuda de un plugin, ofrece un punto de extensión (23.4) y no sabe quién responde. Con todos los plugins desactivados, la base compila, arranca y pasa sus tests (23.8). Eso es lo que hace honesto el «desactivado». Ocultar un botón mientras la base sigue llamando al código del plugin no es desactivarlo.
+
+`needs` no tiene ciclos, por la misma razón que en 7.2.
+
+### 23.4. Puntos de extensión
+
+Un plugin llega a la base de tres maneras. Prefiérelas en este orden.
+
+**1. Escuchar.** La base ya publica lo que cambia, a través de su canal `Snapshot` o `Event` (8.3). Un plugin se suscribe en su propio servicio o actor, y la base no cambia en absoluto. Ejemplo: el plugin del tablero se suscribe a los resúmenes terminados y convierte sus tareas pendientes en tarjetas.
+
+**2. Responder a un hook.** Cuando la base tiene que preguntar algo en un punto de su propio flujo («¿hay algo que añadir a este resumen?»), el slice base declara un hook en su `hooks.rs`, y cada plugin lo responde en su propio `hooks.rs`:
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+El servicio del slice base recibe sus hooks cuando `app` lo ensambla, como `Vec<Arc<dyn SummaryNotes>>`, y pregunta a cada uno. Con el plugin desactivado, la lista está vacía y la base hace lo que hacía antes de que existieran los plugins.
+
+Tres reglas para los hooks:
+
+- **Un hook responde con datos, al momento, sin E/S.** No es `async`. Un plugin que necesita la red o un proceso para responder tiene la respuesta preparada en su propio servicio o actor (aquí, la última instantánea de las tarjetas), y el hook la lee. La base nunca espera a un plugin, así que un plugin lento no puede ralentizar la base.
+- **Un hook no decide por la base.** Devuelve material, y qué hacer con él es una decisión del `logic.rs` del slice base. Un hook que pudiera rechazar algo (un control de acceso, un presupuesto) es una política, y una política es un slice base (6.5): los plugins le añaden reglas como datos, y decide el slice base.
+- **Un trait de hook es el único trait permitido con una sola implementación.** La sección 4 y la 14.2 prohíben un trait hasta que haya dos implementaciones, porque hasta entonces no abstrae nada. Un hook es distinto: sin él, la base tendría que importar el plugin. Todo trait de hook está en un `hooks.rs`, así que la excepción es fácil de encontrar y de comprobar (23.10).
+
+**3. Tener su propia entrada.** Los comandos, DTO, eventos y doors del plugin viven en `app/src/<plugin>/`, como los de cualquier otro slice. La base nunca los llama.
+
+### 23.5. Activado y desactivado
+
+- **Un solo build.** Un plugin no es una feature de Cargo. Una feature por plugin convierte cada combinación de plugins en un build distinto y en un conjunto de tests distinto (22.3), y el usuario no puede activar ni desactivar una feature.
+- **La elección es un archivo.** El slice `plugin` guarda el conjunto de plugins activos en un archivo bajo `kit::paths::config()` y lo lee una vez al arrancar. Si falta el archivo, cada plugin tiene su `on_by_default`.
+- **`app` ensambla solo lo que está activo.** Un plugin desactivado no tiene servicio, ni actor, ni hook, ni bucle de eventos. Su campo en `AppState` lo dice, con la misma forma que la cuenta en la sección 11:
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+`on.start` devuelve `Err(PluginOff)` sin llamar al closure cuando el plugin está desactivado.
+
+- **Los comandos de un plugin desactivado siguen registrados.** `generate_handler!` queda fijado al compilar la aplicación, así que el comando existe y responde. `From<PluginOff> for IpcError` (sección 13) da a la ventana el código `plugin_off`, y el comando sigue teniendo una sola línea de lógica: `state.boards.as_ref()?.send(…)`.
+- **Un cambio surte efecto en el siguiente arranque**, y la ventana lo dice en una frase. Cambiar en caliente significa que el registro de plugins pasa a ser un actor (cumple las tres condiciones de 9.1) y que cada lista de hooks puede cambiar mientras la base funciona. Hazlo solo cuando reiniciar sea un problema real.
+- **Desactivar nunca borra.** Los archivos del plugin se quedan donde están, sus tablas siguen en el esquema y las migraciones de todos los plugins se ejecutan, estén activos o no, así que el esquema es el mismo para cualquier combinación. Borrar los datos de un plugin es una acción aparte que pide el usuario.
+- **`needs` es una función pura.** `plugin::logic::resolve(manifests, wanted)` devuelve el conjunto de plugins que pueden estar activos, o la dependencia que falta. Activar un plugin cuya dependencia está desactivada, o desactivar un plugin que otro necesita, se rechaza con una frase que nombra el otro plugin. El usuario cambia los dos.
+
+### 23.6. Front-end
+
+SLAT no prescribe el front-end (1.2), solo la frontera, y un plugin la cruza como cualquier otro slice. El slice `plugin` tiene una query, `plugin_list`, que devuelve cada manifiesto con su estado, y el front-end muestra las pantallas de un plugin solo cuando está activo. La carpeta de front-end de un plugin lleva el nombre del plugin, como en la sección 6. Una pantalla de un plugin desactivado no se renderiza en absoluto; renderizarla y ocultarla con un estilo no es desactivarla.
+
+### 23.7. Un plugin en su propio crate
+
+Cuando un plugin es pesado de compilar (5.3), o quieres que sea el compilador y no un check quien vigile 23.3, muévelo a `<product>-plugin-<name>`. Depende de `core`, `core` no depende de él, y `app` depende de ambos. La regla de 23.3 queda entonces escrita en `Cargo.toml`, como en 5.1, y `wrappers` en `deny.toml` (16.5) mantiene a todos los demás crates lejos de él. Cuenta dentro de los seis a ocho crates de 5.3, así que hazlo para un plugin pesado, no para cada plugin.
+
+### 23.8. Tests
+
+| Qué | Cómo | Qué cuenta como prueba |
+|---|---|---|
+| la base sin plugins | `AppState` ensamblado con todos los plugins desactivados; los tests de extremo a extremo de la base | las frases que una persona ve en la base, sin cambios |
+| `plugin::logic::resolve` | un `#[test]` normal | el conjunto de plugins, o la dependencia que falta |
+| el hook de un plugin | un `#[test]` normal sobre su implementación, con un valor de instantánea | los datos devueltos |
+| un flujo de la base con un hook | el servicio de la base con un hook escrito en el módulo de test | la base usó lo que devolvió el hook |
+| un comando de un plugin desactivado | a través de la entrada | la frase que muestra la ventana para `plugin_off` |
+
+El hook escrito en un módulo de test es la segunda implementación del trait del hook, así que un hook es el tipo de punto de extensión más fácil de probar.
+
+### 23.9. Convertir un slice existente en un plugin
+
+1. **Mide.** Toma las aristas del check de ciclos de 16.4 y enumera cada slice base que importa al candidato. Esas aristas son la lista base del check de plugins (16.1).
+2. **Invierte cada arista**, un pull request cada vez: la base publica y el plugin escucha (la primera opción), o la base declara un hook y el plugin lo responde. Los movimientos y las correcciones van en pull requests separados (19.2).
+3. **Añade el manifiesto**, su línea en `PLUGINS` y el campo `Result<…, PluginOff>` en `AppState`. Pon `on_by_default: true`, para que quien usa hoy la funcionalidad la conserve.
+4. **Demuéstralo.** Cuando la lista base esté vacía, ejecuta los tests de la base con todos los plugins desactivados (23.8). Solo entonces se puede desactivar el plugin.
+
+### 23.10. Cumplimiento
+
+| Regla | Quién la hace cumplir |
+|---|---|
+| un slice base nunca importa un slice de plugin | `checks/slat-plugins.sh`, más abajo; o `Cargo.toml` para un plugin en su propio crate (23.7) |
+| un slice de plugin importa otro plugin solo cuando está en sus `needs` | el mismo check, contra los `needs` de los manifiestos |
+| ningún id de plugin en un slice base | un check con grep de `PluginId(` en los slices base fuera de `core/src/plugin/` |
+| un trait en `core` con una sola implementación es un hook en un `hooks.rs` | una regla de `ast-grep` para elementos `trait` en `core` fuera de `hooks.rs` (16.5), con una lista base; cada trait de la lista tiene dos implementaciones (14.2) |
+| cada manifiesto está en `PLUGINS` | un check que compara las carpetas con un `plugin.rs` con `app/src/plugins.rs`, como `slat-registered.sh` |
+| la base funciona con todos los plugins desactivados | el test de 23.8, en CI |
+
+Los slices de plugin son las carpetas que tienen un `plugin.rs`. El check reutiliza `checks/slat-edges.sh` de 16.4:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(checks/slat-edges.sh "$core")"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+Mientras un slice se convierte en plugin (23.9), el check resta su lista base, como en 16.1.
+
+### 23.11. Plugins de fuera
+
+El código escrito por otros y cargado mientras la aplicación se ejecuta queda fuera de SLAT. Rust no tiene una interfaz binaria estable, y el código cargado dentro del proceso puede tumbar con él toda la aplicación. Una extensión de fuera se ejecuta como proceso propio y habla con la aplicación a través de una entrada en `app/src/doors/`, por ejemplo un servidor MCP, con las mismas reglas que cualquier otra entrada. Dentro de la aplicación es una entrada, no un plugin.
+
+## 24. Historial de versiones
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.3 | 25 de octubre de 2026 | Sección 23, *Plugins*, opcional: cuándo una funcionalidad es un plugin, el manifiesto en `plugin.rs`, slices base que nunca importan slices de plugin, tres puntos de extensión (escuchar, responder a un hook, tener su propia entrada), los hooks como el único trait permitido con una sola implementación, un solo build con la elección en un archivo que se lee al arrancar, `Result<…, PluginOff>` en `AppState`, la frontera con el front-end, un plugin en su propio crate, tests con todos los plugins desactivados, convertir un slice existente en un plugin, `checks/slat-plugins.sh` y las extensiones de fuera como entradas. Vocabulario: plugin, slice base, hook. El árbol de decisión (17.8) y la sección para la guía para contribuidores (18) mencionan los plugins. El historial de versiones pasa de la sección 23 a la sección 24; las secciones 1 a 22 conservan sus números. Correcciones: el comando de test de cada día en 22.1 es `cargo t`; `unwrap()` y `panic!` también están prohibidos en `kit` (13, 16); la caché de un servicio puede mantener un bloqueo breve, y un bloqueo dentro de un actor lo detecta un check nuevo (16.4, 16.5); `kit::paths` elige una ruta antigua según si existe, no según el sistema operativo (12.4); nombres de archivo antes de los bloques de código en lugar de comentarios dentro de ellos; el árbol del workspace en 5 es una forma abreviada; costuras de datos en la tabla de tests (9.5, 14); la diferencia entre *Command* y *comando de Tauri* (3); la diferencia entre la entrada y el dominio que hay detrás (17.8); los errores de un slice se convierten en `IpcError` en su propio `dto.rs` (6.2, 7.1, 13); `store` reparte conexiones de lectura, con un check (5, 16); los checks siguen a los sub-slices (16.1, 16.4); `checks/slat-edges.sh` ve los imports agrupados (16.4, 23.10); el actor de ejemplo de 9.4 está completo (`Deps`, `execute`, `Snapshot`, `mod.rs`, `Failed`) y envía un snapshot solo cuando ha cambiado; `StartRequest::new` en lugar de `Default` (10); nueva subsección 14.5, un test a través de la entrada. |
 | 1.2 | 25 de octubre de 2026 | Sección 22, *Tiempo de build y de tests*: adónde va el tiempo de compilación, ajustes de build (incluidos `strip = false` y las dependencias de test optimizadas), un solo conjunto de features, ejecutar los tests a los que puede afectar un cambio, un `target/` propio para cada copia de trabajo creado a partir de un clon copy-on-write, CI con una caché que solo se escribe desde `main`, qué hace que un build vuelva a empezar y limpiar `target/`. Drivers nativos pesados en un crate del que `core` no depende (5.3). Nuevos apartados 14.3 (mutantes en el diff), 14.4 (tests de propiedades para `update`) y 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checks para reglas que no tenían ninguno: pureza de `logic.rs`, el `mod.rs` de un slice, ciclos entre slices, el comando de 10 líneas, `unwrap()` y `panic!`. Se prefieren las costuras de datos a una feature `fake`. Corregidos el coste de un crate (5.2, 5.3), `resolver = "3"` para la edición 2024 (5.1) y el paso de caché en el job de plataformas (16.3). El historial de versiones pasa de la sección 22 a la sección 23; las secciones 1 a 21 conservan sus números. |
 | 1.1 | 25 de octubre de 2026 | Sección 12, *Plataformas*: la carpeta `platform/` en `drivers`, contratos de plataforma, prohibiciones fuera de `platform/`, reglas para rutas, archivos y texto, tests de plataforma, job de compilación en CI para Linux y Windows, receta de port. Añadidos en tiers, cumplimiento, recetas y el árbol de decisión. |
 | 1.0 | 24 de octubre de 2026 | Primera versión: tiers, slices con capas fijas, reglas de imports, flujos de datos, actores, el estado de la aplicación como raíz de composición, errores, tests, límites de tamaño, cumplimiento, recetas y migración. |

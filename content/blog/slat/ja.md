@@ -6,7 +6,7 @@ SLATは、Rustで書かれ、ウィンドウ層にTauriを使うデスクトッ�
 
 セクション番号は固定です。SLATに従うリポジトリは、同じ番号を付けたルールの短い写しを`docs/slat/SLAT.md`に置きます。そのため「セクション17.8」のような参照は、このページでもリポジトリでも同じものを指します。両者が食い違ったときは、同じ日のうちに両方を直します。新しいセクションはバージョン履歴の直前に加えます。バージョン履歴は常に最後に置きます。
 
-> **バージョン1.2** · 2026年10月25日。バージョン1.2ではセクション22「*ビルドとテストの時間*」を追加しました。SLATのワークスペースでコンパイル時間がどこに使われるのか、それを減らす設定、変更が影響しうるテストだけを実行する方法、そして本来その必要がないのにビルドが最初からやり直しになる原因を説明します。また、`logic.rs`の純粋さ、スライスの循環、10行のコマンドを含め、ガイドのすべてのルールにチェックを用意しました。全履歴はセクション23にあります。
+> **バージョン1.3** · 2026年10月25日。バージョン1.3ではセクション23「*プラグイン*」を追加しました。ユーザーが機能をオンにしたりオフにしたりできる製品のための、任意のパートです。機能をプラグインにするべきとき、向きに関する唯一のルール（ベーススライスはプラグインスライスを決してインポートしない）、拡張ポイント、起動時に切り替える1つのビルド、そしてそれを正直に保つチェックを扱います。プラグインのないワークスペースには変更は要りません。バージョン1.3では、ガイドのほかの部分のうち、自己矛盾していた箇所や疑問を残していた箇所も直しました。22.1のテストコマンドから、9.4の完全なアクターの例までです。全履歴はセクション24にあります。
 
 ## 1. SLATが存在する理由
 
@@ -83,10 +83,13 @@ Event:    actor/service ─► Snapshot | Event ─► app/events ─emit─► 
 | **スナップショット**（Snapshot） | ウィンドウから見えるアクターの姿。`watch`チャネルで公開されます。 | `select(…)` |
 | **エントリ**（Entry） | 外部の世界がバックエンドを呼び出す手段：Tauriコマンド、MCPサーバー、ローカルブリッジ、リモートハブ。 | 画面コンポーネント |
 | **クエリ**（Query） | 副作用のない読み取り。 | セレクター |
-| **コマンド**（Command） | 状態の変更。 | アクション |
+| **コマンド**（Command） | 状態の変更。*Tauriコマンド*は別物です。ウィンドウが呼び出す関数のことで、クエリを実行することもコマンドを実行することもあります。 | アクション |
 | **イベント**（Event） | 何かが変わったことを、問われずにバックエンドがフロントエンドに伝えるもの。 | ストアへのプッシュ |
 | **プラットフォーム**（Platform） | ビルド対象のオペレーティングシステム：`macos`、`linux`、`windows`。 | ブラウザーのターゲット |
 | **プラットフォーム契約**（Platform contract） | `drivers::platform`にある関数で、どのオペレーティングシステムでも同じ意味を持つもの。 | ポリフィル |
+| **プラグイン**（Plugin） | ユーザーがオンにもオフにもできる機能：マニフェストを持つ1つ以上のスライス（セクション23、任意）。 | 遅延読み込みされる機能ライブラリ |
+| **ベーススライス**（Base slice） | 常にオンのスライス。プラグインスライスを決してインポートしません。 | シェルライブラリ |
+| **フック**（Hook） | ベーススライスが提供し、プラグインがデータで答える拡張ポイント。 | `multi: true`を付けたインジェクショントークン |
 
 このうち3つは混同しやすいので、次のイメージを持っておいてください。**ティアは建物の階、スライスは`core`階にある部屋（住戸）、レイヤーは各住戸の中の部屋です。**
 
@@ -111,14 +114,14 @@ SLATのワークスペースには、最大で5種類のcrateがあります。�
 | ティア | ここに置くもの | 依存してよいもの | 決して依存しないもの |
 |---|---|---|---|
 | `kit` | ドメインを持たない共有の型とツール：識別子、時刻、パス（`kit::paths`）、耐久性のあるファイル書き込み、基本のエラー型、ロギング。 | 外部ライブラリのみ | `tauri`、`tokio::process`、SQL、オペレーティングシステムの`#[cfg]`、製品に属するものすべて |
-| `store` | 永続化：書き込み用接続、マイグレーション、スキーマ、インデックスの再構築、データベースの暗号化。 | `kit` | `tauri`、ドメインロジック、プロセス |
+| `store` | 永続化：書き込み用接続と読み取り用接続、マイグレーション、スキーマ、インデックスの再構築、データベースの暗号化。 | `kit` | `tauri`、ドメインロジック、プロセス |
 | `drivers` | 外部の世界：プロセス、プロバイダーのコマンドラインツール、HTTP、サイドカー。オペレーティングシステムに依存するコードは`drivers/src/platform/`にのみ置く。 | `kit` | `tauri`、`store`、ドメインロジック |
 | `core` | すべてのドメインスライス：モデル、ロジック、ユースケース、アクター。 | `kit`、`store`、`drivers` | `tauri` |
 | `app` | エントリ：Tauriコマンド、DTO、イベント、エントリサーバー（MCP、ブリッジ）、アプリケーションの状態、`setup`、`main`。 | ほかのすべてのティア | ドメインロジック（それは`core`に属する） |
 
 この文書では、`core/…`と`app/…`は2つのcrateのソースフォルダーの略記です。`core/src/<slice>/`は`crates/<product>-core/src/<slice>/`のことであり、`app/src/<slice>/`は`src-tauri/src/<slice>/`、つまりTauriがアプリのcrateのために作るフォルダーのことです。セクション16のチェックは完全なパスを使います。
 
-完全な SLAT ワークスペースの例です。セクション 20 のサンプルアプリケーション Quayside の移行後の姿です。
+SLAT ワークスペースの形です。セクション 20 のサンプルアプリケーション Quayside の移行後の姿を、2つのスライスと4つのチェックに縮めています。すべてのスライスはセクション 20.4 にあります。
 
 ```tree
 quayside/
@@ -218,8 +221,9 @@ quayside/
 
 最小のワークスペースは次のとおりです。
 
+`Cargo.toml`:
+
 ```toml
-# Cargo.toml (workspace root)
 [workspace]
 resolver = "3"
 members = ["crates/*", "src-tauri"]
@@ -230,8 +234,9 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 ```
 
+`crates/quayside-core/Cargo.toml`:
+
 ```toml
-# crates/quayside-core/Cargo.toml
 [package]
 name = "quayside-core"
 version = "0.1.0"
@@ -246,8 +251,9 @@ serde.workspace = true
 thiserror.workspace = true
 ```
 
+`src-tauri/Cargo.toml`:
+
 ```toml
-# src-tauri/Cargo.toml — the app tier keeps the name the bundler already knows
 [package]
 name = "quayside"
 version = "0.1.0"
@@ -324,7 +330,7 @@ pub use service::TranscriptService;
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
-  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
+  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>, From<error> for IpcError
   events.rs     event names and payloads sent to the window; snapshot subscription loops
 ```
 
@@ -397,7 +403,7 @@ pub fn run() {
 | `store.rs` | `model`、`store` crate | `drivers`、`service`、ほかのスライスの`logic` |
 | `service.rs` | `model`、`logic`、`store.rs`、`drivers`、ほかのスライスの公開API | `tauri`、グローバルな状態 |
 | `actor/*` | `model`、`logic`、`service`、`drivers` | `tauri`。さらに`update.rs`はI/Oも不可 |
-| `app/<slice>/dto.rs` | そのスライスの`model` | `service`、`store` |
+| `app/<slice>/dto.rs` | そのスライスの`model`とエラー型、`IpcError` | `service`、`store` |
 | `app/<slice>/commands.rs` | そのスライスの公開API、`dto`、`AppState` | `store`、`drivers`、`logic` |
 
 ### 7.2. スライス間
@@ -446,8 +452,9 @@ window ─invoke─► commands ─► Handle.send(Msg)
 
 イベントは`app/<s>/events.rs`から**のみ**発行します。`core`のスライスは、`watch::Sender<Snapshot>`または`broadcast::Sender<Event>`を通じて変更を公開します。`events.rs`がそれを購読し、`emit`を呼びます。こうすることで`core`はウィンドウを知らずに済み、フロントエンドにとっては各スライスのイベントの出どころがちょうど1か所になります。イベント名は`<slice>:<event>`の形式に従います。たとえば`recording:snapshot`です。
 
+`app/src/recording/events.rs`:
+
 ```rust
-// app/src/recording/events.rs
 pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -489,7 +496,7 @@ pub fn spawn(app: AppHandle, recordings: recording::Handle) {
 
 ```tree
 core/src/<slice>/actor/
-  mod.rs        pub use Handle, Msg, Snapshot
+  mod.rs        pub use Deps, Handle, Msg, Snapshot, spawn
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
   state.rs      struct State: the only place where the state exists
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
@@ -515,8 +522,9 @@ core/src/<slice>/actor/
 
 録音プロセスを起動し、時間制限を課し、停止（ファイルは残す）またはキャンセル（ファイルは破棄する）ができる録音アクターです。型名と関数名はすべて説明のためのものです。
 
+`msg.rs`:
+
 ```rust
-// msg.rs
 pub enum Msg {
     Start { title: String, limit: Duration },
     Started { generation: u64, pid: ProcessId },
@@ -525,11 +533,13 @@ pub enum Msg {
     Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
+    Failed { generation: u64 },
 }
 ```
 
+`state.rs`:
+
 ```rust
-// state.rs
 #[derive(Default)]
 pub struct State {
     pub generation: u64,
@@ -547,6 +557,7 @@ pub enum Phase {
     Stopping,
     Saved(RecordingFile),
     Cancelled,
+    Failed,
 }
 
 impl Phase {
@@ -556,19 +567,52 @@ impl Phase {
 }
 ```
 
+`effect.rs`:
+
 ```rust
-// effect.rs
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
-    StopRecorder { pid: ProcessId },
-    CancelRecorder { pid: ProcessId },
+    StopRecorder { generation: u64, pid: ProcessId },
+    CancelRecorder { generation: u64, pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
-    Persist(RecordingFile),
+    Persist { generation: u64, file: RecordingFile },
+}
+
+#[derive(Clone)]
+pub struct Deps {
+    pub recorder: drivers::recorder::Recorder,
+    pub recordings: Arc<RecordingStore>,
+}
+
+pub async fn execute(effect: Effect, deps: &Deps) -> Option<Msg> {
+    match effect {
+        Effect::SpawnRecorder { generation, title } => Some(match deps.recorder.start(&title).await {
+            Ok(pid) => Msg::Started { generation, pid },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StopRecorder { generation, pid } => Some(match deps.recorder.stop(pid).await {
+            Ok(file) => Msg::Ended { generation, outcome: Outcome::Done(file) },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::CancelRecorder { generation, pid } => Some(match deps.recorder.discard(pid).await {
+            Ok(()) => Msg::Ended { generation, outcome: Outcome::Cancelled },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StartTimer { generation, after } => {
+            tokio::time::sleep(after).await;
+            Some(Msg::TimedOut { generation })
+        }
+        Effect::Persist { generation, file } => match deps.recordings.save(&file).await {
+            Ok(()) => None,
+            Err(_) => Some(Msg::Failed { generation }),
+        },
+    }
 }
 ```
 
+`update.rs`:
+
 ```rust
-// update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Start { title, limit } if !state.phase.is_active() => {
@@ -594,7 +638,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::StopRecorder { pid }]
+                    vec![Effect::StopRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -603,7 +647,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::CancelRecorder { pid }]
+                    vec![Effect::CancelRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -613,13 +657,18 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match outcome {
                 Outcome::Done(file) => {
                     state.phase = Phase::Saved(file.clone());
-                    vec![Effect::Persist(file)]
+                    vec![Effect::Persist { generation, file }]
                 }
                 Outcome::Cancelled => {
                     state.phase = Phase::Cancelled;
                     vec![]
                 }
             }
+        }
+        Msg::Failed { generation } if generation == state.generation => {
+            state.phase = Phase::Failed;
+            state.level_db = None;
+            vec![]
         }
         _ => vec![],
     }
@@ -628,8 +677,11 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 
 新しい録音は、進行中のものがなければいつでも開始できます。以前の録音が保存されたあとやキャンセルされたあとも同じです。最後の分岐こそが世代の要点です。以前の録音から届いた`Level`、`TimedOut`、`Ended`メッセージは古い世代を持っているので、何も変えません。
 
+録音の進行中に届いた`Start`も、何も変えません。そのときウィンドウはStartを出しません。スナップショットが録音中であることを示しているからです。答えが必要な呼び出し側は、oneshotを使った`ask`を使います（9.2）。`Failed`は、録音プロセスが開始、停止、保存のいずれかをできなかったときの終わりです。ドライバーはそのエラーを返す前に、すでにプロセスを終了させ、終了したことを証明しています（17.5）。そのため`Failed`が録音プロセスを動かしたまま残すことはありません。
+
+`run.rs`:
+
 ```rust
-// run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
@@ -648,15 +700,23 @@ pub fn spawn(deps: Deps) -> Handle {
                     }
                 });
             }
-            snapshot_tx.send_replace(Snapshot::from(&state));
+            let next = Snapshot::from(&state);
+            snapshot_tx.send_if_modified(|current| {
+                let changed = *current != next;
+                if changed {
+                    *current = next;
+                }
+                changed
+            });
         }
     });
     Handle::new(tx, snapshot_rx)
 }
 ```
 
+`handle.rs`:
+
 ```rust
-// handle.rs
 #[derive(Clone)]
 pub struct Handle {
     tx: mpsc::Sender<Msg>,
@@ -664,6 +724,10 @@ pub struct Handle {
 }
 
 impl Handle {
+    pub(super) fn new(tx: mpsc::Sender<Msg>, snapshot: watch::Receiver<Snapshot>) -> Self {
+        Self { tx, snapshot }
+    }
+
     pub async fn send(&self, msg: Msg) -> Result<(), ActorGone> {
         self.tx.send(msg).await.map_err(|_| ActorGone)
     }
@@ -677,6 +741,49 @@ impl Handle {
     }
 }
 ```
+
+`snapshot.rs`:
+
+```rust
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Snapshot {
+    pub generation: u64,
+    pub phase: Phase,
+    pub title: Option<String>,
+    pub level_db: Option<i8>,
+}
+
+impl From<&State> for Snapshot {
+    fn from(state: &State) -> Self {
+        Self {
+            generation: state.generation,
+            phase: state.phase.clone(),
+            title: state.title.clone(),
+            level_db: state.level_db.map(|db| db.round() as i8),
+        }
+    }
+}
+```
+
+`mod.rs`:
+
+```rust
+mod effect;
+mod handle;
+mod msg;
+mod run;
+mod snapshot;
+mod state;
+mod update;
+
+pub use effect::Deps;
+pub use handle::Handle;
+pub use msg::Msg;
+pub use run::spawn;
+pub use snapshot::Snapshot;
+```
+
+ウィンドウは、StopとCancelに必要な世代をスナップショットから取ります。ループはスナップショットが変わったときだけ送り（`send_if_modified`）、レベルは整数のデシベルに丸めます。そのため、数ミリ秒ごとに報告するメーターでも、報告のたびにウィンドウへのイベントが生まれることはありません。ウィンドウが描画できるより速く変わる値は、スナップショットではなくストリーム（8.4）に属します。
 
 ループは、自分のエフェクトの結果のために弱い送信側だけを持ちます。最後の`Handle`がドロップされると`recv`が`None`を返し、アクターはいつまでも待ち続けるのではなく終了します。
 
@@ -702,14 +809,13 @@ fn a_late_timeout_from_an_earlier_recording_changes_nothing() {
 }
 ```
 
-少数のテストは、`tokio::time::pause()`、偽のドライバー、スナップショットの列に対するアサーションを使い、`Handle`を通じてアクター全体を動かします。
+少数のテストは、`tokio::time::pause()`、データの継ぎ目または偽のドライバー（14.2）、スナップショットの列に対するアサーションを使い、`Handle`を通じてアクター全体を動かします。
 
 ## 10. バリエーションの爆発
 
 `start_with_budget`、`start_with_slots`、`start_with_snapshot_hook`、`start_with_budget_and_slots`のような関数の一族は、リクエスト用の構造体が欠けているというサインです。この一族を、1つの入口関数と1つのオプション構造体に置き換えます。
 
 ```rust
-#[derive(Default)]
 pub struct StartRequest {
     pub workflow: WorkflowRef,
     pub task: Option<String>,
@@ -720,12 +826,26 @@ pub struct StartRequest {
     pub faults: Faults,
 }
 
+impl StartRequest {
+    pub fn new(workflow: WorkflowRef) -> Self {
+        Self {
+            workflow,
+            task: None,
+            at_once: None,
+            budget: None,
+            origin: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            faults: Faults::default(),
+        }
+    }
+}
+
 pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>, StartError> {
     todo!()
 }
 ```
 
-呼び出し側は`StartRequest { workflow, budget: Some(limit), ..Default::default() }`と書きます。新しいオプションは新しいフィールドを1つ追加するだけで、新しい関数も、すべての呼び出し側への1行の追加も要りません。テスト専用の注入点（`faults`、`hooks`）は、テストビルドにだけ存在するフィールドです。`cfg(test)`だけではそのcrate自身の単体テストしか対象にならないので、統合テストやほかのcrateは`test-hooks`フィーチャーでこれらのフィールドを有効にします。14.2の偽のドライバーと同じ考え方です。どのテストコマンドでも同じ方法で有効にしてください（セクション22.3）。そうしないと、フィーチャーありのビルドとなしのビルドを切り替えるたびに、そのcrateとその上にあるすべてが再びコンパイルされます。
+呼び出し側は`StartRequest { budget: Some(limit), ..StartRequest::new(workflow) }`と書きます。リクエストに欠かせないフィールドは`new`の引数なので、ワークフローのないリクエストはコンパイルできません。`Default`があれば、そうしたリクエストを作れてしまいます。新しいオプションは新しいフィールドを1つ追加するだけで、新しい関数も、すべての呼び出し側への1行の追加も要りません。テスト専用の注入点（`faults`、`hooks`）は、テストビルドにだけ存在するフィールドです。`cfg(test)`だけではそのcrate自身の単体テストしか対象にならないので、統合テストやほかのcrateは`test-hooks`フィーチャーでこれらのフィールドを有効にします。14.2の偽のドライバーと同じ考え方です。どのテストコマンドでも同じ方法で有効にしてください（セクション22.3）。そうしないと、フィーチャーありのビルドとなしのビルドを切り替えるたびに、そのcrateとその上にあるすべてが再びコンパイルされます。
 
 ## 11. AppState、コンポジションルート
 
@@ -841,16 +961,18 @@ pub use unsupported::*;
 
 契約とそのmacOS側の短い例です。
 
+`drivers/src/platform/macos.rs`:
+
 ```rust
-// drivers/src/platform/macos.rs
 pub fn open_path(path: &Path) -> Result<(), PlatformError> {
     let status = Command::new("/usr/bin/open").arg(path).status()?;
     status.success().then_some(()).ok_or(PlatformError::Refused("open"))
 }
 ```
 
+`drivers/src/platform/unsupported.rs`:
+
 ```rust
-// drivers/src/platform/unsupported.rs
 pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
     Err(PlatformError::Unsupported("open_path"))
 }
@@ -872,7 +994,7 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 
 ### 12.4. パス、ファイル、テキスト
 
-- **フォルダーは`kit::paths`からのみ取得します**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。その下では、各システムの慣例（macOSは`~/Library/Application Support/<App>`、LinuxはXDG、Windowsは`%APPDATA%`）に従うライブラリが動きます。すでに古いパスにあるデータは、作られたシステム上ではそのまま残します（5.4の互換性のための例外）。そのシステムでは`kit::paths`が古いパスを返すので、コードは引き続き`kit::paths`に尋ねるだけです。`kit`自体には`#[cfg]`がありません。システムの慣例はライブラリから来ます。
+- **フォルダーは`kit::paths`からのみ取得します**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。その下では、各システムの慣例（macOSは`~/Library/Application Support/<App>`、LinuxはXDG、Windowsは`%APPDATA%`）に従うライブラリが動きます。すでに古いパスにあるデータは、そのまま残します（5.4の互換性のための例外）。古いフォルダーが存在するときは`kit::paths`がそれを返すので、コードは引き続き`kit::paths`に尋ねるだけです。どちらを選ぶかは、オペレーティングシステムではなく、そのフォルダーが存在するかどうかで決まります。だから`kit`自体には`#[cfg]`がありません。システムの慣例はライブラリから来ます。
 - **アプリケーションが作るファイル名は小文字です。** また、大文字と小文字の違いだけで区別される名前は作りません。macOSとWindowsの標準のファイルシステムはそれを区別しませんが、Linuxは区別します。
 - **誰かが開いているファイルの名前を変えたり削除したりしません。** Windowsはそれを拒否します。アトミックな書き込みは`kit::durable_file`を通します。これは置き換える前にファイルを閉じます。
 - **長いパス。** Windowsでは、`\\?\`接頭辞なしのパスはおよそ260文字に制限されます。作業用のコピーや実行用のフォルダーは浅く保ちます。接頭辞を付けるのは`platform`であり、スライスではありません。
@@ -906,9 +1028,9 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 ## 13. エラー
 
 - **各crateは独自のエラーenumを持ちます**（`thiserror`を使います）。スライスは`error.rs`に独自のものを持てます。
-- **`core`はドメインのエラーを返します。** `app/error.rs`がそれをウィンドウ向けのコードと文に変換します。文は翻訳テーブルから取り、ワイヤー上のenumの`Display`からは決して取りません。
+- **`core`はドメインのエラーを返します。** `app/<slice>/dto.rs`が、スライスのエラーをウィンドウ向けのコードと文のキーに変換します。置き場所は、そのスライスのほかのワイヤー型の隣です。`app/error.rs`が持つのは`IpcError`そのものだけです。だから新しいスライスは、自分のエラーを共有のファイルではなく自分のフォルダーに追加します。文は翻訳テーブルから取り、ワイヤー上のenumの`Display`からは決して取りません。
 - **ワイヤーから届いた未知のイベントはエラーではありません。** enumには`#[serde(other)]`を、必須でないフィールドには`Option<T>`を使います。未知の行はデバッグ用にログに残し、先へ進みます。プロバイダーのコマンドラインツールの新しいバージョンが、実行を止めることがあってはなりません。
-- **`unwrap()`と`panic!`は禁止です**。`core`、`store`、`drivers`のテスト以外の場所でのことです。エラーの変種を伴う`?`を使うか、値が欠けることのない理由を説明した`expect()`を使います。
+- **`unwrap()`と`panic!`は禁止です**。`kit`、`store`、`drivers`、`core`のテスト以外の場所でのことです。エラーの変種を伴う`?`を使うか、値が欠けることのない理由を説明した`expect()`を使います。
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -922,8 +1044,9 @@ pub enum RecordingError {
 }
 ```
 
+`app/src/error.rs`:
+
 ```rust
-// app/src/error.rs
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcError {
@@ -931,6 +1054,16 @@ pub struct IpcError {
     message_key: &'static str,
 }
 
+impl IpcError {
+    pub fn new(code: &'static str, message_key: &'static str) -> Self {
+        Self { code, message_key }
+    }
+}
+```
+
+`app/src/recording/dto.rs`:
+
+```rust
 impl From<RecordingError> for IpcError {
     fn from(error: RecordingError) -> Self {
         match error {
@@ -948,7 +1081,7 @@ impl From<RecordingError> for IpcError {
 |---|---|---|
 | `logic.rs`、`update.rs` | 普通の`#[test]`、tokioなし | 値やエフェクトのリストに対するアサーション |
 | `store.rs` | 一時フォルダーに置いたデータベース | 読み取りで返ってくる行 |
-| `service.rs` | 本物のストアと偽のドライバーを使う`#[tokio::test]` | 呼び出し後のファイルやデータベースの状態 |
+| `service.rs` | 本物のストアとデータの継ぎ目（14.2）を使う`#[tokio::test]` | 呼び出し後のファイルやデータベースの状態 |
 | `actor/` | `Handle`とメッセージの台本。時間は`tokio::time::pause`で | `Snapshot`の列 |
 | `drivers` | 本物のプロセス、または記録されたストリーム | プロセスが終了していること（`ESRCH`または空のジョブ）、ワイヤーから届いた行 |
 | `app/commands` | 単体テストはなし。人が目にするものについて、エントリを通したエンドツーエンドまたは統合テスト | 人が目にするテキスト |
@@ -1019,6 +1152,34 @@ proptest! {
 
 `messages(n)`はランダムな`Msg`の値を作るテストモジュールのストラテジーで、`Msg::generation()`はメッセージが持つ世代を返す小さなヘルパーです。セクション20.2のリークは、まさにこのようなテストが自力で見つけるバグです。それを引き起こすメッセージの順序を、誰かが思いつく必要はありません。
 
+### 14.5. エントリを通したテスト
+
+人が目にする文は、エントリを通して証明します。本物のコマンドと本物の`AppState`を使い、ウィンドウは使いません。Tauriの`test`フィーチャーにはモックランタイムがあり、ウィンドウと同じようにコマンドを実行します。このテストは`app` crateの`tests/it`のモジュールで、呼び出すコマンドを登録します。
+
+```rust
+#[test]
+fn reading_a_transcript_that_is_gone_says_so() {
+    let app = tauri::test::mock_builder()
+        .manage(support::app_state())
+        .invoke_handler(tauri::generate_handler![transcript::commands::transcript_read])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("the test app could not start");
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("the test window could not open");
+
+    let reply = tauri::test::get_ipc_response(
+        &window,
+        support::invoke("transcript_read", serde_json::json!({ "id": "gone" })),
+    );
+
+    let error = reply.expect_err("a missing transcript must be refused");
+    assert_eq!(support::english(&error["messageKey"]), "This transcript no longer exists.");
+}
+```
+
+`support::app_state()`は一時フォルダー上に`AppState`を組み立てます。`support::invoke`は`tauri::test::INVOKE_KEY`を使って`tauri::webview::InvokeRequest`を作ります。`support::english`は、フロントエンドが使うのと同じ翻訳ファイルでキーを引きます。`messageKey`で止まるテストが証明するのは対応づけだけです。証明になるのは文です。
+
 ## 15. サイズの上限
 
 | 単位 | 警告のしきい値 | 対処 |
@@ -1039,17 +1200,18 @@ SLATを導入した日にしきい値を超えているファイルは、**ベ�
 |---|---|
 | Tauriを知っているのは`app`だけ | `Cargo.toml`（ほかの場所に`tauri`への依存がない）。推移的な依存には`cargo-deny`（16.5） |
 | ティアは下方向にのみ依存する | `Cargo.toml` |
-| 書き込み用接続を開くのは`store`だけ | grepチェック：`Connection::open`は`store` crateの中だけ。スライスの`store.rs`ファイルは`rusqlite`の型を使うので、依存関係だけでは不十分です。 |
-| `#[tauri::command]`は`app/*/commands.rs`の中だけ | grepチェック |
+| データベースへの接続を開くのは`store`だけ | `checks/slat-writer.sh`：`Connection::open`は`store` crateの中だけ。このcrateが、1つの書き込み用接続と読み取り用接続を配ります。スライスの`store.rs`はそれを受け取って`rusqlite`の型を使うので、依存関係だけでは不十分です。 |
+| `#[tauri::command]`は`app/**/commands.rs`の中だけ | grepチェック |
 | すべてのコマンドが登録されている | スライスのコマンドと`generate_handler!`を比較するチェック |
-| `emit`は`app/*/events.rs`の中だけ | grepチェック |
+| `emit`は`app/**/events.rs`の中だけ | grepチェック |
 | スライス間の深いインポートがない | ほかのスライスからの`crate::<a>::<layer>::`を探すチェック |
-| `core`に状態を持つ`static`がない | `static .*(Mutex|RwLock)`を探すgrepチェック |
+| `core`に状態を持つ`static`がない | `Mutex`、`RwLock`、またはアトミック型を持つ`static`を探すgrepチェック |
+| アクターの中にロックがない | grepチェック：`actor/`の下に`Mutex`も`RwLock`もない |
 | `logic.rs`と`update.rs`にI/Oがない | チェック：`logic.rs`、`logic/`、`update.rs`に`async`、`tokio::`、`std::fs`、`store::`、`drivers::`がない |
 | スライスの`mod.rs`には`mod …;`と`pub use …;`だけがある | `core/src/`の下のすべての`mod.rs`に対するチェック |
 | スライス間に循環がない | インポートからスライスのグラフを作り、ソートするチェック |
-| Tauriコマンドは最大10行 | `app/*/commands.rs`に対するチェック |
-| `core`、`store`、`drivers`のテスト以外に`unwrap()`と`panic!`がない | Clippyのリント`unwrap_used`と`panic`（16.5） |
+| Tauriコマンドは最大10行 | `app/**/commands.rs`に対するチェック |
+| `kit`、`store`、`drivers`、`core`のテスト以外に`unwrap()`と`panic!`がない | Clippyのリント`unwrap_used`と`panic`（16.5） |
 | オペレーティングシステムは`drivers/src/platform/`と`app/src/platform.rs`の中だけ | 12.3の一覧を使うgrepチェック |
 | `app`以外のcrateがすべてのプラットフォームでコンパイルできる | UbuntuとWindowsのCIランナー上での`cargo check` |
 | サイズの上限 | 縮小しか許されないベースラインリスト付きのチェック |
@@ -1066,7 +1228,7 @@ set -euo pipefail
 
 baseline="checks/baselines/emit.txt"
 found="$(grep -rln --include='*.rs' -E '\.emit(_to)?\(' crates src-tauri/src \
-  | grep -vE '^src-tauri/src/[a-z_]+/events\.rs$' | sort || true)"
+  | grep -vE '^src-tauri/src/([a-z_]+/)+events\.rs$' | sort || true)"
 
 new="$(comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
 fixed="$(comm -13 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
@@ -1112,29 +1274,48 @@ jobs:
 
 | チェック | ルール |
 |---|---|
-| `checks/slat-commands.sh` | `#[tauri::command]`は`src-tauri/src/*/commands.rs`の中だけ |
+| `checks/slat-commands.sh` | `#[tauri::command]`は`src-tauri/src/**/commands.rs`の中だけ |
 | `checks/slat-registered.sh` | スライスのすべてのコマンドが`generate_handler!`に現れる |
-| `checks/slat-emit.sh` | `emit`は`src-tauri/src/*/events.rs`の中だけ |
+| `checks/slat-emit.sh` | `emit`は`src-tauri/src/**/events.rs`の中だけ |
+| `checks/slat-writer.sh` | `Connection::open`は`crates/*-store`の中だけ |
 | `checks/slat-deep-imports.sh` | ほかのスライスからの`crate::<slice>::<layer>::`がない |
-| `checks/slat-static-state.sh` | `crates/*-core*`に`static … Mutex|RwLock`がない |
+| `checks/slat-static-state.sh` | `crates/*-core*`に`Mutex`、`RwLock`、またはアトミック型を持つ`static`がない |
+| `checks/slat-actor-lock.sh` | `actor/`の下に`Mutex`も`RwLock`もない |
 | `checks/slat-pure.sh` | `logic.rs`、`logic/`、`update.rs`に`async`、`tokio::`、`std::fs`、`store::`、`drivers::`がない |
 | `checks/slat-slice-mod.sh` | スライスの`mod.rs`には`mod …;`と`pub use …;`だけがある |
+| `checks/slat-edges.sh` | スライスのグラフを、1行に1つの`<slice> <imported slice>`で出力する |
 | `checks/slat-slice-cycles.sh` | スライス間に循環がない |
 | `checks/slat-command-size.sh` | すべての`#[tauri::command]`は最大10行 |
 | `checks/slat-platform.sh` | `platform/`の外での12.3の禁止事項 |
 | `checks/slat-size.sh` | ベースラインにある1,500行超のファイルは縮小することしか許されない |
 
-循環のチェックに、グラフのライブラリは要りません。`core/src/<slice>/`の中の`use crate::<other>`はどれも1本の辺です。そして`tsort`は、ループのあるグラフをエラー出力で報告します。
+循環のチェックに、グラフのライブラリは要りません。`checks/slat-edges.sh`がスライスのグラフを出力します。`core/src/<slice>/`の中の`crate::<other>`はどれも1本の辺です。`use crate::{run::Run, plan::Plan};`のようにまとめたインポートも、複数行にまたがるものも含みます。入れ子のグループ（`crate::{run::{Run, Step}, plan}`）では、内側のグループより後の名前が失われます。そこからは`ast-grep`のルール（16.5）が引き受けます。
+
+`checks/slat-edges.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-core="crates/quayside-core/src"
-edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
-  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
-  | awk '$1 != $2 && NF == 2' | sort -u)"
+core="${1:-crates/quayside-core/src}"
+find "$core" -mindepth 2 -name '*.rs' | sort | while read -r file; do
+  slice="${file#"$core"/}"
+  slice="${slice%%/*}"
+  { tr '\n' ' ' < "$file" \
+    | grep -oE 'crate::(\{[^}]*\}|[a-z_]+)' \
+    | grep -oE '(crate::|[{,] *)[a-z_]+' \
+    | sed -E 's/^(crate::|[{,] *)//' \
+    | sed "s/^/$slice /"; } || true
+done | awk '$1 != $2' | sort -u
+```
 
+`tsort`は、ループのあるグラフをエラー出力で報告します。`checks/slat-slice-cycles.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+edges="$(checks/slat-edges.sh crates/quayside-core/src)"
 loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
 if [ -n "$loops" ]; then
   printf '%s\n' "$loops"
@@ -1163,7 +1344,7 @@ panic = "deny"
 workspace = true
 ```
 
-1つ目のブロックはワークスペースのルートに、2つ目は`kit`、`store`、`drivers`、`core`に置きます。`app` crateはこれを継承しません。ワークスペースのルートに`allow-unwrap-in-tests = true`と`allow-panic-in-tests = true`を書いた`clippy.toml`を置けば、テストは読みやすいままです。crateのフォルダーにある`clippy.toml`はルートのものを置き換えるので、その2行を繰り返します。`core`の`clippy.toml`には`disallowed-methods`と`disallowed-types`を列挙できます。たとえば`std::process::Command`と`std::sync::Mutex`です。そうすれば、スライスから起動したプロセスやアクターの中のロックは、grepの一致ではなくリントのエラーになります。
+1つ目のブロックはワークスペースのルートに、2つ目は`kit`、`store`、`drivers`、`core`に置きます。`app` crateはこれを継承しません。ワークスペースのルートに`allow-unwrap-in-tests = true`と`allow-panic-in-tests = true`を書いた`clippy.toml`を置けば、テストは読みやすいままです。crateのフォルダーにある`clippy.toml`はルートのものを置き換えるので、その2行を繰り返します。`core`の`clippy.toml`には`disallowed-types`を列挙できます。たとえば`std::process::Command`です。そうすれば、スライスから起動したプロセスは、grepの一致ではなくリントのエラーになります。ただし`std::sync::Mutex`はそこに挙げないでください。スライスのサービスが持つキャッシュ（9.1）には短いロックが必要で、それを`await`をまたいで保持することはありません。あってはならないロック、つまりアクターの中のロック（9.3）は、`checks/slat-actor-lock.sh`が捕まえます。
 
 **依存関係のグラフ全体には`cargo-deny`。** `Cargo.toml`は`core`の中の`use tauri::…`を止めますが、裏口から`tauri`を引き込むライブラリは止めません。この漏れはレビューでは見えず、`core`のテストがアプリケーションで最も重い部分をコンパイルすることになります。`cargo-deny`はグラフ全体を確認します。`deny.toml`に次のように書きます。
 
@@ -1241,8 +1422,11 @@ Tauri、ウィンドウ、MCP、リモートハブを呼び出すか？         
 ドメインの型か？                                            → core/<s>/model.rs
 I/Oを伴う手順の並びか？                                     → core/<s>/service.rs
 バックグラウンドで生き、ウィンドウが見守る状態か？          → core/<s>/actor/
+ユーザーがオフにしても、残りが動き続けるか？                → プラグインスライス (セクション23)
 ドメインをまったく持たないか（時刻、パス、ID、ファイル）？  → kit
 ```
+
+最初の問いは、エントリそのものだけについてのものです。コマンド、emit、MCPサーバーやリモートハブのリスナーです。そうしたエントリが行うこと（ペアリング、暗号化、ブリッジが運ぶメッセージ、リモートセッションのルール）はドメインであり、エントリが呼び出す`core`のスライスに置きます。
 
 ## 18. コーディングエージェントとの協働
 
@@ -1257,9 +1441,9 @@ SLATは、コードの多くをコーディングエージェントが書くチ�
 リポジトリのコントリビューターガイド（`AGENTS.md`、`CLAUDE.md`、またはそれに相当するもの）にそのままコピーできるセクションです。
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1268,6 +1452,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1362,7 +1548,7 @@ src-tauri/src/
 
 ### 20.2. コードに現れる症状
 
-アプリケーションの状態（抜粋）です。
+アプリケーションの状態です。41個のフィールドのうち11個を示します。
 
 ```rust
 pub struct AppState {
@@ -1377,7 +1563,6 @@ pub struct AppState {
     pub sync_in_flight: AtomicBool,
     pub companion: Mutex<Option<CompanionHub>>,
     pub model_prices: Mutex<Option<(Instant, PriceList)>>,
-    // … 30 more
 }
 ```
 
@@ -1604,7 +1789,7 @@ SLATで最も大きな節約は、セクション5から生まれます。Tauri�
 
 - **ライブラリのcrateはコンパイルされますが、リンクはされません。** リンクされるのはすべてのバイナリで、テストの実行ではすべてのテストバイナリです。
 - **各crateには3種類のテストバイナリがありえます。** 単体テスト、`tests/`の直下にある各ファイル（セクション14.1でこれを`tests/it`の1つに減らします）、そしてドキュメントの例です。エディション2024からは、crateのドキュメントの例は1つのバイナリとしてビルドされます。ドキュメントの例を持たないcrateは、`[lib]`の下に`doctest = false`を設定します。
-- **`app`より下のテストの実行に、Tauriは要りません。** 日常のコマンドは`cargo nextest run --workspace --exclude quayside`です。`app` crateをビルドするのは、セクション14のエンドツーエンドのテストだけです。
+- **`app`より下のテストの実行に、Tauriは要りません。** 日常のコマンドは`cargo t`（22.3）で、`quayside`以外のすべてのcrateを実行します。`app` crateをビルドするのは、セクション14のエンドツーエンドのテストだけです。
 - **重いネイティブライブラリは、Tauriより高くつきます。** ビルドスクリプトがコンパイルするCやC++のソース、そして機械学習のcrateは、クリーンビルドの大部分と、それを含むすべてのバイナリのリンクの大部分を占めます。セクション5.3は、それらを`core`のテストから遠ざけます。
 - **リンク時間の大きな部分はデバッグ情報です。** そのほとんどは一度も読まれません。
 
@@ -1663,7 +1848,7 @@ Cargoは、求められたフィーチャーの組が異なるたびに、依存
 t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
 ```
 
-エージェントやCIを含め、誰もがスイート全体には`cargo t`を実行し、より絞ったテストコマンドはどれも、フィルターを加えた`cargo t`にします（22.4）。パッケージやフィーチャーの一覧が異なるテストコマンドは、2つ目のビルドです。
+エージェントやCIを含め、誰もがスイート全体には`cargo t`を実行し、より絞ったテストコマンドはどれも、フィルターを加えた`cargo t`にします（22.4）。パッケージやフィーチャーの一覧が異なるテストコマンドは、2つ目のビルドです。データの継ぎ目（14.2）だけを使うワークスペースでは、ここと22.4のスクリプトから`--features quayside-drivers/fake`を外します。誰も定義していないフィーチャーを指定するエイリアスは失敗します。
 
 ### 22.4. 変更が影響しうるものを実行する
 
@@ -1760,10 +1945,216 @@ Cargoは古い成果物を決して削除しません。ブランチ、フィー
 
 救済策ではなくルールにします。`target/debug/deps`のファイルが数万を超えたとき、または`target/`が数十ギガバイトを超えたときは、`cargo clean`を実行し、1回のコールドビルドを受け入れます。より穏やかな選択肢は`cargo sweep --time 30`です。30日間使われていない成果物だけを削除します。作業コピーを削除すれば、その`target/`も一緒に消えます。
 
-## 23. バージョン履歴
+## 23. プラグイン
+
+*バージョン1.3で追加。任意。* プラグインを必要としない製品は、このセクションを飛ばしてかまいません。ほかのどのセクションもこのセクションに依存せず、プラグインのないワークスペースもSLATに完全に従っています。
+
+プラグインとは、製品の残りの部分が同じように動き続けたまま、ユーザーがオンにもオフにもできる機能です。製品を初期状態では小さく保ち、選択によって大きくできます。SLATでは、プラグインは新しい種類のコードではありません。1つか少数のスライスに、マニフェストと、インポートの向きに関するルールを1つ加えたものです。どのプラグインもアプリケーションにコンパイルされています。プラグインをオフにするとは、起動時に組み立てられないということであり、ビルドから欠けているということではありません。
+
+:::diagram plugins
+
+### 23.1. 機能をプラグインにするとき
+
+機能をプラグインにするのは、次の**3つすべて**が当てはまるときだけです。
+
+1. それがなくても製品は役に立つ。
+2. オフにしてもデータは失われず、ほかの機能も壊れない。ただし、それを必要とすると宣言したプラグインは除く。
+3. 決めるのはユーザーであり、ビルドやプラットフォームやリリースチャネルではない。
+
+| 候補 | 1 | 2 | 3 | 判定 |
+|---|---|---|---|---|
+| アクションアイテムをチームのボードに同期する | はい | はい | はい | プラグイン |
+| スマートフォン用のコンパニオン | はい | はい | はい | プラグイン |
+| 録音 | いいえ、それが製品そのもの | — | — | ベーススライス |
+| チームがまだテスト中の機能 | はい | はい | いいえ、決めるのはチーム | 設定であり、プラグインではない |
+| macOSにだけあるメニュー | — | — | いいえ、決めるのはプラットフォーム | セクション12 |
+| 追加のログを出すビルド | — | — | いいえ、決めるのはビルド | Cargoのプロファイル |
+
+このセクションでは、`core`のスライスを2つの言葉で呼び分けます。**ベーススライス**は常にオンです。**プラグインスライス**はプラグインに属します。どちらも`core`ティアにあります。「ベース」は製品について、「core」はcrateについて述べた言葉です。
+
+### 23.2. 構成
+
+プラグインスライスは、セクション6の構成に、各ティアで1つずつファイルを加えたものです。
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+複数のスライスを持つプラグインは、プラグインの名前を持つスライスにマニフェストを置き、ほかのスライスはそのサブスライスにします（6.1）。
+
+マニフェストは定数です。
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`、`PluginId`、どのプラグインがオンかを覚えておくファイル、そしてどのプラグインを同時にオンにできるかの判断は、1つのベーススライス`core/src/plugin/`に属します。このスライスは通常のファイルを持ちますが、`plugin.rs`はありません。それ自体はプラグインではないからです。すべてのマニフェストを列挙するのは`app`だけです。すべてのスライスを知ってよいのは`app`だけだからです。一覧は`app/src/plugins.rs`にあります。
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. 向き
+
+プラグインを成り立たせるルールです。**ベーススライスはプラグインスライスを決してインポートしません。**
+
+| インポート元 | インポートしてよいもの |
+|---|---|
+| ベーススライス | ほかのベーススライス |
+| プラグインスライス | ベーススライス。ほかのプラグインスライスは、そのプラグインが自分の`needs`にあるときだけ |
+| `app` | すべて |
+
+ベーススライスはプラグインの名前も出しません。`if on.contains("board")`も、文字列の中のプラグインidもありません。ベースがプラグインの助けを必要とするときは、拡張ポイント（23.4）を提供し、誰が答えるかは知りません。すべてのプラグインがオフでも、ベースはコンパイルでき、起動し、自分のテストに通ります（23.8）。これが「オフ」を正直なものにします。ベースがプラグインのコードを呼び続けたままボタンを隠すのは、オフではありません。
+
+`needs`に循環はありません。理由は7.2と同じです。
+
+### 23.4. 拡張ポイント
+
+プラグインがベースに届く方法は3つあります。この順に優先します。
+
+**1. 聞く。** ベースは、変化を`Snapshot`または`Event`のチャネルですでに公開しています（8.3）。プラグインは自分のサービスかアクターでそれを購読し、ベースはまったく変わりません。例：ボードのプラグインは完成した要約を購読し、そのアクションアイテムをカードにします。
+
+**2. フックに答える。** ベースが自分のフローのある時点で何かを尋ねなければならないとき（「この要約に加えるものはあるか？」）、ベーススライスは自分の`hooks.rs`にフックを宣言し、各プラグインは自分の`hooks.rs`でそれに答えます。
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+ベーススライスのサービスは、`app`が組み立てるときに自分のフックを`Vec<Arc<dyn SummaryNotes>>`として受け取り、その1つずつに尋ねます。プラグインがオフなら一覧は空で、ベースはプラグインが存在する前と同じことをします。
+
+フックの3つのルール：
+
+- **フックはデータで、すぐに、I/Oなしで答えます。** `async`ではありません。答えるのにネットワークやプロセスが必要なプラグインは、自分のサービスかアクターで答えを用意しておき（ここではカードの最新のスナップショット）、フックはそれを読みます。ベースはプラグインを決して待たないので、遅いプラグインがベースを遅くすることはありません。
+- **フックはベースの代わりに決めません。** 材料を返すだけで、それをどうするかはベーススライスの`logic.rs`にある判断です。何かを拒否できるフック（アクセス制御、予算）はポリシーであり、ポリシーはベーススライスです（6.5）。プラグインはそこにデータとしてルールを加え、決めるのはベーススライスです。
+- **フックのtraitは、実装が1つでも許される唯一のtraitです。** セクション4と14.2は、実装が2つになるまでtraitを禁じています。それまでは何も抽象化しないからです。フックは違います。フックがなければ、ベースはプラグインをインポートしなければなりません。フックのtraitはすべて`hooks.rs`にあるので、この例外は見つけやすく、チェックしやすいのです（23.10）。
+
+**3. エントリを持つ。** プラグインのコマンド、DTO、イベント、ウィンドウ以外のエントリ（doors）は、ほかのスライスと同じく`app/src/<plugin>/`にあります。ベースがそれらを呼ぶことはありません。
+
+### 23.5. オンとオフ
+
+- **ビルドは1つ。** プラグインはCargoのフィーチャーではありません。プラグインごとにフィーチャーを作ると、プラグインの組み合わせごとに別のビルドと別のテスト一式ができ（22.3）、しかもユーザーはフィーチャーを切り替えられません。
+- **選択はファイルです。** `plugin`スライスは、オンになっているプラグインの集合を`kit::paths::config()`の下のファイルに保存し、起動時に一度だけ読みます。ファイルがなければ、各プラグインはその`on_by_default`に従います。
+- **`app`はオンのものだけを組み立てます。** オフのプラグインには、サービスも、アクターも、フックも、イベントのループもありません。`AppState`のそのフィールドが、セクション11のaccountと同じ形でそれを示します。
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+プラグインがオフのとき、`on.start`はクロージャーを呼ばずに`Err(PluginOff)`を返します。
+
+- **オフのプラグインのコマンドも登録されたままです。** `generate_handler!`はアプリケーションのコンパイル時に決まるので、コマンドは存在し、応答します。`From<PluginOff> for IpcError`（セクション13）がウィンドウにコード`plugin_off`を渡し、コマンドのロジックは1行のままです：`state.boards.as_ref()?.send(…)`。
+- **変更は次の起動時に反映され**、ウィンドウはそのことを1文で伝えます。実行中に切り替えるということは、プラグインのレジストリがアクターになり（9.1の3つの問いすべてに当てはまります）、ベースの実行中にどのフックの一覧も変わりうるということです。再起動が本当に問題になるときだけ、そうしてください。
+- **オフは決して削除しません。** プラグインのファイルはそのまま残り、テーブルもスキーマに残ります。どのプラグインのマイグレーションも、オンかどうかに関係なく実行されるので、どの組み合わせでもスキーマは同じです。プラグインのデータを削除するのは、ユーザーが求める別の操作です。
+- **`needs`は純粋な関数です。** `plugin::logic::resolve(manifests, wanted)`は、オンにしてよいプラグインの集合か、欠けている依存を返します。必要とするプラグインがオフのままプラグインをオンにすること、またはほかのプラグインが必要とするプラグインをオフにすることは、もう一方のプラグインの名前を挙げた1文とともに拒否されます。ユーザーは両方を切り替えます。
+
+### 23.6. フロントエンド
+
+SLATはフロントエンドを規定せず（1.2）、境界だけを決めます。プラグインはほかのスライスと同じようにその境界を越えます。`plugin`スライスには、すべてのマニフェストをその状態とともに返すクエリ`plugin_list`があり、フロントエンドはプラグインがオンのときだけその画面を表示します。プラグインのフロントエンドのフォルダーには、セクション6と同じく、プラグインの名前を付けます。オフのプラグインの画面はまったくレンダリングしません。レンダリングしてスタイルで隠すのは、オフではありません。
+
+### 23.7. 独自のcrateに置くプラグイン
+
+プラグインのコンパイルが重いとき（5.3）、あるいはチェックではなくコンパイラーに23.3を守らせたいときは、`<product>-plugin-<name>`に移します。それは`core`に依存し、`core`はそれに依存せず、`app`は両方に依存します。こうすると23.3のルールは5.1と同じく`Cargo.toml`に書かれ、`deny.toml`（16.5）の`wrappers`がほかのすべてのcrateをそれから遠ざけます。5.3の6〜8個のcrateに数えられるので、重いプラグインにだけ行い、すべてのプラグインには行いません。
+
+### 23.8. テスト
+
+| 対象 | テストの方法 | 証拠とみなすもの |
+|---|---|---|
+| プラグインなしのベース | すべてのプラグインをオフにして組み立てた`AppState`。ベースのエンドツーエンドテスト | ベースで人が目にする文が変わらないこと |
+| `plugin::logic::resolve` | 普通の`#[test]` | プラグインの集合、または欠けている依存 |
+| プラグインのフック | その実装に対する普通の`#[test]`。スナップショットの値を使う | 返されたデータ |
+| フックを伴うベースのフロー | テストモジュールに書いたフックを持つベースのサービス | ベースがフックの返したものを使ったこと |
+| オフのプラグインのコマンド | エントリ経由 | `plugin_off`に対してウィンドウが表示する文 |
+
+テストモジュールに書いたフックは、フックのtraitの2つ目の実装です。そのため、フックは拡張ポイントの中で最もテストしやすい種類です。
+
+### 23.9. 既存のスライスをプラグインにする
+
+1. **測定する。** 16.4の循環チェックから辺を取り出し、候補をインポートしているベーススライスをすべて列挙します。それらの辺が、プラグインのチェックのベースラインになります（16.1）。
+2. **辺を1つずつ逆転させる。** プルリクエスト1つにつき1つです。ベースが公開してプラグインが聞く（第一の選択）か、ベースがフックを宣言してプラグインがそれに答えます。移動と修正は別々のプルリクエストにします（19.2）。
+3. **マニフェストを加える。** `PLUGINS`のその行と、`AppState`の`Result<…, PluginOff>`フィールドも加えます。`on_by_default: true`にして、今日その機能を使っている人がそのまま使えるようにします。
+4. **証明する。** ベースラインが空になったら、すべてのプラグインをオフにしてベースのテストを実行します（23.8）。そうして初めて、プラグインをオフにしてよくなります。
+
+### 23.10. 強制
+
+| ルール | 誰が強制するか |
+|---|---|
+| ベーススライスはプラグインスライスを決してインポートしない | 下の`checks/slat-plugins.sh`。独自のcrateに置くプラグインなら`Cargo.toml`（23.7） |
+| プラグインスライスがほかのプラグインをインポートするのは、それが自分の`needs`にあるときだけ | 同じチェック。マニフェストの`needs`と照合する |
+| ベーススライスにプラグインidがない | `core/src/plugin/`以外のベーススライスで`PluginId(`を探すgrepチェック |
+| 実装が1つだけの`core`のtraitは`hooks.rs`のフックである | `core`の中で`hooks.rs`以外にある`trait`項目を探す`ast-grep`ルール（16.5）。ベースラインリスト付きで、リストにある各traitには実装が2つある（14.2） |
+| すべてのマニフェストが`PLUGINS`にある | `plugin.rs`を持つフォルダーと`app/src/plugins.rs`を比較するチェック。`slat-registered.sh`と同様 |
+| すべてのプラグインがオフでもベースが動く | 23.8のテストをCIで |
+
+プラグインスライスとは、`plugin.rs`を持つフォルダーのことです。チェックは16.4の`checks/slat-edges.sh`を再利用します。
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(checks/slat-edges.sh "$core")"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+スライスをプラグインにしている間（23.9）は、16.1と同じく、チェックはそのベースラインを差し引きます。
+
+### 23.11. 外部からのプラグイン
+
+ほかの誰かが書き、アプリケーションの実行中に読み込まれるコードは、SLATの範囲外です。Rustには安定したバイナリインターフェースがなく、プロセスに読み込まれたコードはアプリケーション全体を道連れにして落とすことがあります。外部からの拡張は独自のプロセスとして動き、`app/src/doors/`のエントリ、たとえばMCPサーバーを通じてアプリケーションとやり取りします。ルールはほかのエントリと同じです。アプリケーションの中では、それはプラグインではなくエントリです。
+
+## 24. バージョン履歴
 
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026年10月25日 | セクション23「*プラグイン*」、任意：機能をプラグインにするとき、`plugin.rs`のマニフェスト、プラグインスライスを決してインポートしないベーススライス、3つの拡張ポイント（聞く、フックに答える、エントリを持つ）、実装が1つでも許される唯一のtraitとしてのフック、起動時に読むファイルに選択を置く1つのビルド、`AppState`の`Result<…, PluginOff>`、フロントエンドの境界、独自のcrateに置くプラグイン、すべてのプラグインをオフにしたテスト、既存のスライスをプラグインにする手順、`checks/slat-plugins.sh`、エントリとしての外部からの拡張。用語：プラグイン、ベーススライス、フック。決定木（17.8）とコントリビューターガイド用のセクション（18）がプラグインに触れる。バージョン履歴はセクション23からセクション24に移動。セクション1〜22の番号は変わらない。修正：22.1の日常のテストコマンドは`cargo t`。`kit`でも`unwrap()`と`panic!`を禁止（13、16）。サービスのキャッシュは短いロックを持ってよく、アクターの中のロックは新しいチェックが捕まえる（16.4、16.5）。`kit::paths`は古いパスを、オペレーティングシステムではなく、それが存在するかどうかで選ぶ（12.4）。コードブロック内のコメントの代わりに、コードブロックの前にファイル名。セクション5のワークスペースのツリーは縮めた形。テストの表にデータの継ぎ目（9.5、14）。*コマンド*と*Tauriコマンド*を区別（3）。エントリとその背後のドメインを区別（17.8）。スライスのエラーは自分の`dto.rs`で`IpcError`に対応づける（6.2、7.1、13）。`store`は読み取り用接続も配り、そのチェックを追加（5、16）。チェックはサブスライスにも及ぶ（16.1、16.4）。`checks/slat-edges.sh`はまとめたインポートも見る（16.4、23.10）。9.4のアクターの例は完全になり（`Deps`、`execute`、`Snapshot`、`mod.rs`、`Failed`）、スナップショットは変わったときだけ送る。`Default`の代わりに`StartRequest::new`（10）。新しいサブセクション14.5、エントリを通したテスト。 |
 | 1.2 | 2026年10月25日 | セクション22「*ビルドとテストの時間*」：コンパイル時間の使われ方、ビルドの設定（`strip = false`と最適化したテストの依存関係を含む）、1つのフィーチャーの組、変更が影響しうるテストの実行、コピーオンライトのクローンから始める作業コピーごとの別々の`target/`、`main`からだけ書き込むキャッシュを使うCI、ビルドが最初からやり直しになる原因、`target/`の掃除。`core`が依存しないcrateに置く重いネイティブドライバー（5.3）。新しいサブセクション14.3（差分に対するミュータント）、14.4（`update`のプロパティテスト）、16.5（Clippy、`cargo-deny`、`ast-grep`）。チェックのなかったルールへのチェック：`logic.rs`の純粋さ、スライスの`mod.rs`、スライスの循環、10行のコマンド、`unwrap()`と`panic!`。`fake`フィーチャーよりデータの継ぎ目を優先。crateのコストの訂正（5.2、5.3）、エディション2024のための`resolver = "3"`（5.1）、プラットフォームジョブのキャッシュのステップ（16.3）。バージョン履歴はセクション22からセクション23に移動。セクション1〜21の番号は変わらない。 |
 | 1.1 | 2026年10月25日 | セクション12「*プラットフォーム*」：`drivers`内の`platform/`フォルダー、プラットフォーム契約、`platform/`の外での禁止事項、パス・ファイル・テキストのルール、プラットフォームのテスト、LinuxとWindowsでのCIのコンパイルジョブ、移植のレシピ。ティア、強制、レシピ、決定木への追記。 |
 | 1.0 | 2026年10月24日 | 最初のバージョン：ティア、決まったレイヤーを持つスライス、インポートのルール、データの流れ、アクター、コンポジションルートとしてのアプリケーションの状態、エラー、テスト、サイズの上限、強制、レシピ、移行。 |

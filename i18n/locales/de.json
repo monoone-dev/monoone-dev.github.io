@@ -263,7 +263,7 @@
       },
       "slat": {
         "title": "SLAT: ein Backend-Muster für Rust- und Tauri-Apps",
-        "description": "Der vollständige Leitfaden zu SLAT 1.2 (Slice · Layer · Actor · Tier): Tiers, Slices, Actors, Plattformen, Durchsetzung, Migration und ein durchgearbeitetes Beispiel.",
+        "description": "Der vollständige Leitfaden zu SLAT 1.3 (Slice · Layer · Actor · Tier): Tiers, Slices, Actors, Plattformen, Plugins, Durchsetzung, Migration und ein durchgearbeitetes Beispiel.",
         "short": "SLAT-Leitfaden"
       }
     },

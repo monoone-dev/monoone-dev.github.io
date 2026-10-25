@@ -8,6 +8,7 @@ import DiagramFeGrid from './diagrams/DiagramFeGrid.vue'
 import DiagramFlows from './diagrams/DiagramFlows.vue'
 import DiagramMigration from './diagrams/DiagramMigration.vue'
 import DiagramPlatform from './diagrams/DiagramPlatform.vue'
+import DiagramPlugins from './diagrams/DiagramPlugins.vue'
 import DiagramSlice from './diagrams/DiagramSlice.vue'
 import DiagramTiers from './diagrams/DiagramTiers.vue'
 
@@ -22,6 +23,7 @@ const diagrams: Record<string, Component> = {
   'flows': DiagramFlows,
   'migration': DiagramMigration,
   'platform': DiagramPlatform,
+  'plugins': DiagramPlugins,
   'slice': DiagramSlice,
   'tiers': DiagramTiers
 }

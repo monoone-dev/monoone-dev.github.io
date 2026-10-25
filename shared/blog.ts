@@ -38,7 +38,7 @@ export const posts: BlogPost[] = [
     key: 'slat',
     slug: 'slat',
     date: '2026-10-25',
-    version: '1.2',
+    version: '1.3',
     icon: 'i-lucide-layers',
     sections: [
       'why-slat-exists',
@@ -63,6 +63,7 @@ export const posts: BlogPost[] = [
       'case-study',
       'adoption',
       'build-time',
+      'plugins',
       'version-history'
     ]
   }
