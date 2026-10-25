@@ -4,6 +4,8 @@ Il nome elenca i suoi quattro elementi costitutivi: **S**lice, **L**ayer, **A**c
 
 Questa pagina è il riferimento completo. È scritta in modo che un team che non ha mai visto SLAT possa adottarlo in un nuovo progetto o migrare un progetto esistente, senza doverci chiedere nulla. Contiene le regole, le ragioni che le motivano, codice da copiare, i check che le fanno rispettare e un esempio completo: un'applicazione disordinata rimessa in forma passo dopo passo.
 
+I numeri delle sezioni sono stabili. Un repository che segue SLAT tiene una breve copia delle regole in `docs/slat/SLAT.md` con gli stessi numeri, così un riferimento come "sezione 17.8" significa la stessa cosa in questa pagina e nel repository. Quando le due versioni differiscono, entrambe vengono corrette lo stesso giorno.
+
 > **Versione 1.1** · 25 ottobre 2026. La versione 1.1 aggiunge la sezione 12, *Piattaforme*: come tenere in un solo posto il codice che dipende dal sistema operativo, così che un futuro port su Linux o Windows sia lavoro in una sola cartella. La cronologia completa è nella sezione 22.
 
 ## 1. Perché esiste SLAT
@@ -112,7 +114,9 @@ Un workspace SLAT ha al massimo cinque tipi di crate. Si chiamano `<product>-<ti
 | `store` | Persistenza: la connessione in scrittura, migrazioni, schema, ricostruzione dell'indice, cifratura del database. | `kit` | `tauri`, logica di dominio, processi |
 | `drivers` | Il mondo esterno: processi, strumenti a riga di comando dei provider, HTTP, sidecar. Il codice che dipende dal sistema operativo vive solo in `drivers/src/platform/`. | `kit` | `tauri`, `store`, logica di dominio |
 | `core` | Tutte le slice di dominio: modello, logica, casi d'uso, attori. | `kit`, `store`, `drivers` | `tauri` |
-| `app` | Punti di ingresso: comandi Tauri, DTO, eventi, server di ingresso (MCP, bridge), lo stato dell'applicazione, `setup`, `main`. | tutti i tier elencati sopra | logica di dominio (appartiene a `core`) |
+| `app` | Punti di ingresso: comandi Tauri, DTO, eventi, server di ingresso (MCP, bridge), lo stato dell'applicazione, `setup`, `main`. | tutti gli altri tier | logica di dominio (appartiene a `core`) |
+
+In questo documento `core/…` e `app/…` abbreviano le cartelle dei sorgenti dei due crate. `core/src/<slice>/` è `crates/<product>-core/src/<slice>/`, e `app/src/<slice>/` è `src-tauri/src/<slice>/`, la cartella che Tauri crea per il crate dell'app. I check della sezione 16 usano i percorsi completi.
 
 ### 5.1. Il compilatore fa da guardia
 
@@ -160,6 +164,7 @@ name = "quayside_lib"
 
 [dependencies]
 quayside-core = { path = "../crates/quayside-core" }
+quayside-store = { path = "../crates/quayside-store" }
 quayside-kit = { path = "../crates/quayside-kit" }
 tauri = { version = "2", features = [] }
 ```
@@ -170,7 +175,7 @@ Il minimo è due: `core` e `app`. Gli altri tier si separano solo quando il loro
 
 ### 5.3. Quando dividere un tier
 
-Quando `core` supera circa 60.000 righe, o quando ricompilare tutto `core` dopo una modifica a una sola slice diventa pesante, si sposta un gruppo di slice in `core-<group>`, per esempio `quayside-core-run`. Non si va mai oltre circa otto crate. Ogni crate è un passaggio di link separato, e su un portatile una macchina bloccata costa più dei secondi che una suddivisione più fine farebbe risparmiare.
+Quando `core` supera circa 60.000 righe, o quando ricompilare tutto `core` dopo una modifica a una sola slice diventa pesante, si sposta un gruppo di slice in `core-<group>`, per esempio `quayside-core-run`. Si resta al massimo tra sei e otto crate. Ogni crate è un passaggio di link separato, e su un portatile una macchina bloccata costa più dei secondi che una suddivisione più fine farebbe risparmiare.
 
 ### 5.4. Eccezione di compatibilità
 
@@ -213,15 +218,15 @@ mod model;
 mod service;
 mod store;
 
-pub use model::{Recording, RecordingId, RecordingState};
-pub use service::RecordingService;
+pub use model::{Transcript, TranscriptId, Word};
+pub use service::TranscriptService;
 ```
 
 ### 6.2. Una slice in `app`
 
 ```
 app/src/<slice>/
-  mod.rs        `mod …;` plus the list of commands for `generate_handler!`
+  mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
   dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
   events.rs     event names and payloads sent to the window; snapshot subscription loops
@@ -232,7 +237,7 @@ Il resto del crate `app`:
 ```
 app/src/
   main.rs       calls lib::run(); nothing else
-  lib.rs        run(): Builder, plugins, setup, generate_handler! assembled from <slice>::COMMANDS
+  lib.rs        run(): Builder, plugins, setup, generate_handler! with every command, grouped by slice
   state.rs      AppState: the composition root, section 11
   error.rs      entry error → code and text for the window
   platform.rs   optional: window and menu settings that depend on the operating system, section 12.3
@@ -243,16 +248,16 @@ app/src/
 
 ```rust
 #[tauri::command]
-pub async fn recording_start(
+pub async fn transcript_search(
     state: State<'_, AppState>,
-    input: StartRecordingInput,
-) -> Result<RecordingDto, IpcError> {
-    let recording = state.recordings.start(input.into()).await?;
-    Ok(recording.into())
+    input: SearchInput,
+) -> Result<Vec<TranscriptHitDto>, IpcError> {
+    let hits = state.transcripts.search(input.into()).await?;
+    Ok(hits.into_iter().map(Into::into).collect())
 }
 ```
 
-Se un comando ha bisogno di un `if`, di un ciclo o di due chiamate alla slice, quella logica appartiene a `service.rs` o a `logic.rs`. Il limite di 10 righe non è una questione di stile. Un comando che si limita a tradurre è un comando che non ha mai bisogno di un test proprio, perché tutto ciò che fa è già testato nella slice.
+Se un comando ha bisogno di un `if`, di un ciclo o di due chiamate alla slice, quella logica appartiene a `service.rs` o a `logic.rs`. Il limite di 10 righe non è una questione di stile. Un comando che si limita a tradurre non ha bisogno di un test unitario proprio, perché la sua logica è già testata nella slice. Resta da dimostrare la frase che una persona vede, e quella si testa end-to-end attraverso il punto di ingresso (sezione 14).
 
 ### 6.4. Registrare i comandi
 
@@ -347,7 +352,7 @@ Gli eventi vengono emessi **solo** da `app/<s>/events.rs`. Una slice in `core` p
 
 ```rust
 // app/src/recording/events.rs
-pub fn spawn(app: AppHandle, recordings: RecordingsHandle) {
+pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
         while snapshots.changed().await.is_ok() {
@@ -362,7 +367,7 @@ pub fn spawn(app: AppHandle, recordings: RecordingsHandle) {
 
 ### 8.4. Flussi ad alto volume
 
-Alcune slice producono molti piccoli eventi: righe di log, parole della trascrizione, aggiornamenti di avanzamento. Non si emette un evento Tauri per ogni riga. La slice riceve in `core` un canale limitato, e `app` possiede una **pompa** che raggruppa le righe in un `tauri::ipc::Channel` ogni pochi millisecondi. Il canale limitato è la contropressione: quando la finestra è lenta, la slice lo scopre (`Sent::Dropped`) invece di riempire la memoria. Il raggruppamento, il canale e la frequenza dei frame riguardano il punto di ingresso e restano in `app`.
+Alcune slice producono molti piccoli eventi: righe di log, parole della trascrizione, aggiornamenti di avanzamento. Non si emette un evento Tauri per ogni riga. La slice riceve in `core` un canale limitato: un piccolo tipo mittente proprio della slice (per esempio il `WordSink` della sezione 20.3) il cui `send` non aspetta mai e restituisce ciò che è successo, come `Sent::Delivered`, `Sent::Dropped` o `Sent::Closed`. `app/<s>/events.rs` possiede una **pompa** che raggruppa le righe in un `tauri::ipc::Channel` ogni pochi millisecondi. Il canale limitato è la contropressione: quando la finestra è lenta, la slice lo scopre (`Sent::Dropped`) invece di riempire la memoria, e quando nessuno ascolta più (`Sent::Closed`) la slice può fermarsi. Il raggruppamento, il canale e la frequenza dei frame riguardano il punto di ingresso e restano in `app`.
 
 ## 9. Attori: slice con stato
 
@@ -394,7 +399,7 @@ core/src/<slice>/actor/
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
   effect.rs     enum Effect + async fn execute(effect, &Deps) -> Option<Msg>
   run.rs        the loop: recv → update → execute → snapshot.send; started with tokio::spawn
-  handle.rs     struct Handle { tx, snapshot }: send(), ask() with oneshot, subscribe()
+  handle.rs     struct Handle { tx, snapshot }: send(), current(), subscribe(); ask() with a oneshot only when a caller needs a reply
   snapshot.rs   struct Snapshot: what the window sees; From<&State>
 ```
 
@@ -412,7 +417,7 @@ core/src/<slice>/actor/
 
 ### 9.4. Un piccolo attore completo
 
-Un attore di registrazione che avvia un processo registratore, applica un limite di tempo e può essere annullato. Tutti i nomi di tipi e funzioni sono illustrativi.
+Un attore di registrazione che avvia un processo registratore, applica un limite di tempo e può essere fermato (il file viene conservato) o annullato (il file viene scartato). Tutti i nomi di tipi e funzioni sono illustrativi.
 
 ```rust
 // msg.rs
@@ -421,6 +426,7 @@ pub enum Msg {
     Started { generation: u64, pid: ProcessId },
     Level { generation: u64, db: f32 },
     Stop { generation: u64 },
+    Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
 }
@@ -446,6 +452,12 @@ pub enum Phase {
     Saved(RecordingFile),
     Cancelled,
 }
+
+impl Phase {
+    pub fn is_active(&self) -> bool {
+        matches!(self, Phase::Starting | Phase::Recording { .. } | Phase::Stopping)
+    }
+}
 ```
 
 ```rust
@@ -453,6 +465,7 @@ pub enum Phase {
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
     StopRecorder { pid: ProcessId },
+    CancelRecorder { pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
     Persist(RecordingFile),
 }
@@ -462,7 +475,7 @@ pub enum Effect {
 // update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
-        Msg::Start { title, limit } if state.phase == Phase::Idle => {
+        Msg::Start { title, limit } if !state.phase.is_active() => {
             state.generation += 1;
             state.phase = Phase::Starting;
             state.title = Some(title.clone());
@@ -490,6 +503,15 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
                 _ => vec![],
             }
         }
+        Msg::Cancel { generation } if generation == state.generation => {
+            match state.phase.clone() {
+                Phase::Recording { pid } => {
+                    state.phase = Phase::Stopping;
+                    vec![Effect::CancelRecorder { pid }]
+                }
+                _ => vec![],
+            }
+        }
         Msg::Ended { generation, outcome } if generation == state.generation => {
             state.level_db = None;
             match outcome {
@@ -508,14 +530,14 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 }
 ```
 
-L'ultimo ramo è il senso delle generazioni: un messaggio `Level`, `TimedOut` o `Ended` proveniente da una registrazione precedente arriva con una generazione vecchia e non cambia nulla.
+Una nuova registrazione può partire ogni volta che non c'è nulla in corso, anche dopo che una precedente è stata salvata o annullata. L'ultimo ramo è il senso delle generazioni: un messaggio `Level`, `TimedOut` o `Ended` proveniente da una registrazione precedente arriva con una generazione vecchia e non cambia nulla.
 
 ```rust
 // run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
-    let mailbox = tx.clone();
+    let mailbox = tx.downgrade();
     tokio::spawn(async move {
         let mut state = State::default();
         while let Some(msg) = rx.recv().await {
@@ -524,7 +546,9 @@ pub fn spawn(deps: Deps) -> Handle {
                 let mailbox = mailbox.clone();
                 tokio::spawn(async move {
                     if let Some(next) = execute(effect, &deps).await {
-                        let _ = mailbox.send(next).await;
+                        if let Some(mailbox) = mailbox.upgrade() {
+                            let _ = mailbox.send(next).await;
+                        }
                     }
                 });
             }
@@ -557,6 +581,8 @@ impl Handle {
     }
 }
 ```
+
+Il ciclo tiene solo un mittente debole per i risultati dei propri effetti. Quando l'ultimo `Handle` viene distrutto, `recv` restituisce `None` e l'attore termina invece di restare in attesa per sempre.
 
 Quando l'ordine degli effetti conta (per esempio, salvare prima di notificare), quegli effetti si eseguono in sequenza dentro un unico task, invece di avviare un task per effetto. L'unica regola è che il ciclo stesso non aspetti mai.
 
@@ -594,7 +620,7 @@ pub struct StartRequest {
     pub at_once: Option<NonZeroUsize>,
     pub budget: Option<Money>,
     pub origin: Option<Origin>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-hooks"))]
     pub faults: Faults,
 }
 
@@ -603,7 +629,7 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 }
 ```
 
-Chi chiama scrive `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Una nuova opzione è un nuovo campo, non una nuova funzione più una nuova riga in ogni chiamante. I punti di iniezione riservati ai test (`faults`, `hooks`) sono campi che esistono solo nella build di test.
+Chi chiama scrive `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Una nuova opzione è un nuovo campo, non una nuova funzione più una nuova riga in ogni chiamante. I punti di iniezione riservati ai test (`faults`, `hooks`) sono campi che esistono solo in una build di test. `cfg(test)` da solo copre soltanto gli unit test del crate stesso, quindi i test di integrazione e gli altri crate attivano quei campi con una feature `test-hooks`, la stessa idea del driver finto della 14.2.
 
 ## 11. AppState, la composition root
 
@@ -616,8 +642,9 @@ Chi chiama scrive `StartRequest { workflow, budget: Some(limit), ..Default::defa
 Non può contenere:
 
 - `Mutex<Option<…>>`, `AtomicBool` o `Mutex<HashMap<…>>` che descrivono qualche processo in background. Quello è stato di un attore e appartiene a `core/<slice>/actor/state.rs`;
-- campi che sono un dettaglio di una singola slice (cache, mappe di annullamento, code);
-- inoltre le slice non possono nascondere stato in variabili `static` (`OnceLock<Mutex<…>>`, `LazyLock<Mutex<…>>`). L'unica eccezione è una costante calcolata una sola volta (`OnceLock<PathBuf>`) che non cambia mai finché il processo è in vita.
+- campi che sono un dettaglio di una singola slice (cache, mappe di annullamento, code).
+
+Le slice non possono nemmeno nascondere stato in variabili `static` (`OnceLock<Mutex<…>>`, `LazyLock<Mutex<…>>`). L'unica eccezione è una costante calcolata una sola volta (`OnceLock<PathBuf>`) che non cambia mai finché il processo è in vita.
 
 **Il test:** ogni campo di `AppState` si può descrivere con un solo sostantivo di una slice ("registrazioni", "esecuzioni", "account"). Un campo che richiede una frase per essere descritto appartiene a una slice.
 
@@ -626,10 +653,10 @@ pub struct AppState {
     pub paths: kit::paths::AppPaths,
     pub store: store::Store,
     pub recordings: recording::Handle,
-    pub transcripts: Arc<transcript::Service>,
-    pub boards: Arc<board::Service>,
+    pub transcripts: Arc<transcript::TranscriptService>,
+    pub boards: board::Handle,
     pub triggers: trigger::Handle,
-    pub account: Result<Arc<account::Service>, account::Unavailable>,
+    pub account: Result<Arc<account::AccountService>, account::Unavailable>,
 }
 ```
 
@@ -650,6 +677,8 @@ impl<K: Eq + Hash + Clone> Jobs<K> {
 ```
 
 `begin` annulla qualsiasi job precedente con la stessa chiave, memorizza una nuova generazione e restituisce una guardia che rimuove la voce quando viene distrutta, ma solo se la generazione corrisponde ancora. Il lock è tenuto solo dentro queste due brevi funzioni, mai attraverso un `await`. Poiché `Jobs` è un tipo concreto e non un trait, non viola la regola contro i trait con una sola implementazione.
+
+Questa non è una scappatoia rispetto alle regole della sezione 11. Quelle regole riguardano dove vive lo stato, non il suo tipo. Un lock dentro `kit::Jobs`, posseduto dal servizio di una sola slice e mai tenuto attraverso un `await`, è un dettaglio privato di quella slice. La stessa mappa come campo di `AppState` è stato che non appartiene a nessuno.
 
 ## 12. Piattaforme
 
@@ -747,7 +776,7 @@ L'unica eccezione è `app/src/platform.rs`, per le cose che conosce solo Tauri: 
 
 ### 12.4. Percorsi, file e testo
 
-- **Le cartelle arrivano solo da `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Sotto c'è una libreria che segue la convenzione di ogni sistema (macOS `~/Library/Application Support/<App>`, Linux XDG, Windows `%APPDATA%`). I dati che vivono già in un percorso più vecchio restano lì, sul sistema in cui sono stati creati (l'eccezione di compatibilità della 5.4).
+- **Le cartelle arrivano solo da `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Sotto c'è una libreria che segue la convenzione di ogni sistema (macOS `~/Library/Application Support/<App>`, Linux XDG, Windows `%APPDATA%`). I dati che vivono già in un percorso più vecchio restano lì, sul sistema in cui sono stati creati (l'eccezione di compatibilità della 5.4); su quel sistema `kit::paths` restituisce il percorso più vecchio, quindi il codice continua a chiedere solo a `kit::paths`. `kit` stesso non ha alcun `#[cfg]`: la convenzione del sistema arriva dalla libreria.
 - **I nomi dei file creati dall'applicazione sono in minuscolo** e non differiscono mai solo per maiuscole e minuscole. I file system predefiniti di macOS e Windows non li distinguono; Linux sì.
 - **Non si rinomina né si elimina un file che qualcuno tiene aperto.** Windows lo rifiuta. Le scritture atomiche passano da `kit::durable_file`, che chiude il file prima di sostituirlo.
 - **Percorsi lunghi.** Windows limita i percorsi a circa 260 caratteri senza il prefisso `\\?\`. Le copie di lavoro e le cartelle delle esecuzioni vanno tenute poco profonde; il prefisso lo aggiunge `platform`, mai una slice.
@@ -756,7 +785,7 @@ L'unica eccezione è `app/src/platform.rs`, per le cose che conosce solo Tauri: 
 
 ### 12.5. Test di piattaforma
 
-- **Il test del contratto** vive in `drivers/tests/platform_contract.rs` ed è lo stesso per ogni sistema operativo: un processo è morto dopo `terminate`, un segreto torna indietro dopo essere stato scritto e sparisce dopo essere stato eliminato, un file privato non è leggibile da un altro utente. Ogni piattaforma supportata supera **lo stesso** insieme di test.
+- **Il test del contratto** vive in `drivers/tests/it/platform_contract.rs`, un modulo dell'unico target di integrazione del crate (14.1), ed è lo stesso per ogni sistema operativo: un processo è morto dopo `terminate`, un segreto torna indietro dopo essere stato scritto e sparisce dopo essere stato eliminato, un file privato non è leggibile da un altro utente. Ogni piattaforma supportata supera **lo stesso** insieme di test.
 - **I test fuori da `drivers` non usano né una shell né segnali.** Un processo necessario a un test è un piccolo programma Rust (un binario in un crate di test), non `sh -c 'sleep 10'`.
 - Un `#[cfg]` di piattaforma nei test è ammesso solo nei test di `drivers`.
 
@@ -826,13 +855,13 @@ impl From<RecordingError> for IpcError {
 | `service.rs` | `#[tokio::test]` con uno store reale e un driver finto | lo stato dei file o del database dopo la chiamata |
 | `actor/` | un `Handle` più una sequenza prestabilita di messaggi; il tempo con `tokio::time::pause` | la sequenza di `Snapshot` |
 | `drivers` | un processo reale o un flusso registrato | il processo è morto (`ESRCH` o un job vuoto), le righe arrivate dal protocollo |
-| `app/commands` | un test di integrazione attraverso il punto di ingresso (end-to-end o un target di integrazione) | il testo che una persona vede |
+| `app/commands` | nessun test unitario; un test end-to-end o di integrazione attraverso il punto di ingresso, per ciò che una persona vede | il testo che una persona vede |
 
 Il test di un messaggio mostrato a una persona va dove la persona lo vede, non solo in `logic.rs`. Una funzione che produce la frase giusta non prova nulla se nessuno la chiama.
 
 ### 14.1. Un solo binario di integrazione
 
-Ogni file messo direttamente in `tests/` è un binario separato, e ogni binario viene linkato separatamente. In un workspace grande significa un minuto per file. I test di integrazione vanno in **un solo** target, `tests/it/main.rs`, con un modulo per argomento, e un singolo argomento si esegue con un filtro:
+Ogni file messo direttamente in `tests/` è un binario separato, e ogni binario viene linkato separatamente. In un workspace grande significa un minuto per file. Ogni crate ha **un solo** target di integrazione, `tests/it/main.rs`, con un modulo per argomento, e un singolo argomento si esegue con un filtro:
 
 ```
 tests/it/
@@ -917,7 +946,9 @@ echo "emit: $(printf '%s\n' "$found" | sed '/^$/d' | wc -l | tr -d ' ') files on
 
 ### 16.2. Un check deve poter fallire
 
-Prima di fidarsi di un check, si inserisce una violazione reale, si osserva il check diventare rosso e poi la si rimuove. Un check che non è mai stato rosso non è mai stato testato. Un check che cerca una stringa con grep può passare perché la stringa compare in un commento: per questo i pattern qui sopra cercano forme di codice (`\.emit(`), non parole.
+Prima di fidarsi di un check, si inserisce una violazione reale, si osserva il check diventare rosso e poi la si rimuove. Un check che non è mai stato rosso non è mai stato testato.
+
+I check con grep di SLAT cercano codice vietato, quindi una corrispondenza dentro un commento li fa diventare rossi, non verdi. È fastidioso ma sicuro, e la soluzione è cancellare il codice morto. Il tipo pericoloso è un check che richiede la presenza di una stringa: passa grazie a un commento. Una regola del genere si dimostra eseguendo codice, non leggendo testo.
 
 ### 16.3. Il job di piattaforma in CI
 
@@ -1006,15 +1037,15 @@ Sezione 12.7.
 ### 17.8. Dove va questo? (albero decisionale)
 
 ```
-Does it call Tauri, the window, MCP or a remote hub?   → app (commands, events, doors)
-Does it depend on the operating system?                → drivers/src/platform/ (section 12)
-Does it talk to a process, the network, a keychain?    → drivers (through platform contracts)
-Is it a database read/write or the schema?             → store (connection) / core/<s>/store.rs (queries)
-Is it a pure decision or a calculation?                → core/<s>/logic.rs (or update.rs in an actor)
-Is it a domain type?                                   → core/<s>/model.rs
-Is it a sequence of steps with I/O?                    → core/<s>/service.rs
-Is it state that lives in the background and the window watches? → core/<s>/actor/
-Does it have no domain at all (time, paths, ids, files)?          → kit
+Chiama Tauri, la finestra, MCP o un hub remoto?           → app (commands, events, doors)
+Dipende dal sistema operativo?                            → drivers/src/platform/ (sezione 12)
+Parla con un processo, la rete, un portachiavi?           → drivers (tramite i contratti di piattaforma)
+È una lettura/scrittura del database o lo schema?         → store (connessione) / core/<s>/store.rs (query)
+È una decisione pura o un calcolo?                        → core/<s>/logic.rs (o update.rs in un attore)
+È un tipo del dominio?                                    → core/<s>/model.rs
+È una sequenza di passi con I/O?                          → core/<s>/service.rs
+È stato che vive in background e che la finestra osserva? → core/<s>/actor/
+Non ha alcun dominio (tempo, percorsi, id, file)?         → kit
 ```
 
 ## 18. Lavorare con gli agenti di coding
@@ -1039,7 +1070,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
-- Before adding code, find its place with the decision tree (SLAT section 17.8).
+- Before adding code, find its place with the decision tree (SLAT section 17.8,
+  https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
 ```
@@ -1196,7 +1228,7 @@ Quest'ultimo è anche una shell injection che aspetta solo un nome di file con u
 
 ### 20.3. La migrazione, passo dopo passo
 
-**Passo 1: invertire le dipendenze.** Il transcriber smette di ricevere un `AppHandle`. Scrive le parole in un canale limitato che appartiene a `core`; `app` pompa il canale verso la finestra. Il codice di upload smette di leggere `AppState` e riceve come argomenti i due valori che gli servono.
+**Passo 2: invertire le dipendenze.** Il transcriber smette di ricevere un `AppHandle`. Scrive le parole in un canale limitato che appartiene a `core`; `app` pompa il canale verso la finestra. Il codice di upload smette di leggere `AppState` e riceve come argomenti i due valori che gli servono.
 
 ```rust
 pub async fn transcribe(file: &Path, words: WordSink) -> Result<Outcome<Transcript>, TranscribeError> {
@@ -1212,9 +1244,9 @@ pub async fn transcribe(file: &Path, words: WordSink) -> Result<Outcome<Transcri
 }
 ```
 
-**Passo 2: separare `app` e `core`.** Un workspace con `quayside-core` (senza `tauri`) e l'attuale `src-tauri` come `app`. Il `lib.rs` dell'app mantiene `pub use quayside_core::{…};`, così ogni vecchio percorso compila ancora. La prova: inserire `use tauri::Manager;` in `core` produce un errore di compilazione.
+**Passo 3: separare `app` e `core`.** Un workspace con `quayside-core` (senza `tauri`) e l'attuale `src-tauri` come `app`. Il `lib.rs` dell'app mantiene `pub use quayside_core::{…};`, così ogni vecchio percorso compila ancora. La prova: inserire `use tauri::Manager;` in `core` produce un errore di compilazione.
 
-**Passo 3: `kit`, `store`, `drivers`.** Le nove aperture di SQLite confluiscono in un unico writer in `quayside-store`. Registratore, transcriber, client dei modelli e `git` passano in `quayside-drivers`. I 23 file con `#[cfg]` diventano una sola cartella `platform/` con `unix.rs`, `macos.rs` e `unsupported.rs`, e `reveal` diventa un contratto:
+**Passo 4: `kit`, `store`, `drivers`.** Le nove aperture di SQLite confluiscono in un unico writer in `quayside-store`. Registratore, transcriber, client dei modelli e `git` passano in `quayside-drivers`. I 23 file con `#[cfg]` diventano una sola cartella `platform/` con `unix.rs`, `macos.rs` e `unsupported.rs`, e `reveal` diventa un contratto:
 
 ```rust
 pub fn reveal_path(path: &Path) -> Result<(), PlatformError> {
@@ -1225,15 +1257,15 @@ pub fn reveal_path(path: &Path) -> Result<(), PlatformError> {
 
 Niente shell, niente quoting, niente injection.
 
-**Passo 4: slice.** `handlers.rs` e `utils.rs` vengono smontati in slice, partendo dalle più piccole:
+**Passo 5: slice.** `handlers.rs` e `utils.rs` vengono smontati in slice, partendo dalle più piccole:
 
 ```
-settings → device → model → summary → transcript → board → companion → agent → recording
+settings → device → llm → summary → transcript → board → companion → agent → recording
 ```
 
-**Passo 5: `kit::Jobs`.** `transcribing` e `summarizing` (due mappe con token di annullamento) diventano un `Jobs<TranscriptId>` dentro il servizio delle trascrizioni e un `Jobs<SummaryId>` dentro il servizio dei riassunti.
+**Passo 6: `kit::Jobs`.** `transcribing` e `summarizing` (due mappe con token di annullamento) diventano un `Jobs<TranscriptId>` dentro il servizio delle trascrizioni e un `Jobs<SummaryId>` dentro il servizio dei riassunti.
 
-**Passo 6: attori.** Tre porzioni di stato superano il test della 9.1: la registrazione, le esecuzioni degli agenti e la sincronizzazione della board. La registrazione va per prima, con test di `update` scritti sul comportamento attuale. L'`AtomicBool` sparisce; Stop ora porta la generazione della registrazione a cui si riferisce, e la fuga descritta nella 20.2 diventa un test di una riga che resta verde per sempre. Le sette funzioni `start_recording_*` diventano una sola:
+**Passo 7: attori.** Tre porzioni di stato superano il test della 9.1: la registrazione, le esecuzioni degli agenti e la sincronizzazione della board. La registrazione va per prima, con test di `update` scritti sul comportamento attuale. L'`AtomicBool` sparisce; Stop ora porta la generazione della registrazione a cui si riferisce, e la fuga descritta nella 20.2 diventa un test di una riga che resta verde per sempre. Le sette funzioni `start_recording_*` diventano una sola:
 
 ```rust
 pub struct StartRecording {
@@ -1245,7 +1277,7 @@ pub struct StartRecording {
 }
 ```
 
-**Passo 7: check.** Ogni check della sezione 16 si attiva con la propria baseline. La maggior parte delle baseline è già vuota, perché i passi precedenti hanno eliminato le violazioni.
+**Passo 8: check.** Ogni check della sezione 16 si attiva con la propria baseline. La maggior parte delle baseline è già vuota, perché i passi precedenti hanno eliminato le violazioni.
 
 ### 20.4. Dopo
 
@@ -1266,7 +1298,7 @@ crates/
       agent/      mod.rs model.rs logic.rs store.rs service.rs actor/
       board/      mod.rs model.rs logic.rs store.rs service.rs actor/
       companion/  mod.rs model.rs logic.rs store.rs service.rs
-      device/  model/  settings/  guard/
+      device/  llm/  settings/  guard/
 src-tauri/
   src/
     main.rs lib.rs state.rs error.rs platform.rs
@@ -1346,7 +1378,7 @@ Quando valgono tutte e tre le condizioni della 9.1. Nel dubbio, è un servizio. 
 La parte condivisa diventa una slice a sé, ed entrambe dipendono da essa. I cicli non sono mai ammessi.
 
 **Perché il limite per i comandi è di 10 righe?**
-Perché un comando che si limita a tradurre non ha bisogno di un test proprio. Dieci righe bastano per deserializzare, chiamare e convertire; non bastano per nascondere una decisione.
+Perché un comando che si limita a tradurre non ha bisogno di un test unitario proprio. Dieci righe bastano per deserializzare, chiamare e convertire; non bastano per nascondere una decisione.
 
 **SLAT rallenta la compilazione?**
 Dividere in crate di solito accelera le build incrementali, perché una modifica a una slice non ricompila `kit`, `store` o `drivers`. Può rallentare leggermente una build da zero per i passaggi di link in più, ed è per questo che SLAT limita il numero di crate.
@@ -1364,4 +1396,4 @@ Bene, perché la struttura è fissa e le regole importanti sono check, non consi
 | 1.1 | 25 ottobre 2026 | Sezione 12, *Piattaforme*: la cartella `platform/` in `drivers`, i contratti di piattaforma, i divieti fuori da `platform/`, le regole per percorsi, file e testo, i test di piattaforma, il job CI di compilazione su Linux e Windows, la ricetta per il port. Aggiunte a tier, applicazione delle regole, ricette e albero decisionale. |
 | 1.0 | 24 ottobre 2026 | Prima versione: tier, slice con layer fissi, regole di import, flussi di dati, attori, lo stato dell'applicazione come composition root, errori, test, limiti di dimensione, applicazione delle regole, ricette e migrazione. |
 
-SLAT ha un versionamento come quello di una libreria. Una modifica a una regola alza la versione minor; una modifica che rende non conforme del codice finora conforme alza la versione major. Ogni repository che segue SLAT indica nella propria guida per chi contribuisce la versione che adotta.
+SLAT ha un versionamento come quello di una libreria. Una nuova regola alza la versione minor quando arriva con una baseline: il codice di oggi resta conforme e solo le nuove violazioni sono rosse. È così che la 1.1 ha aggiunto le regole di piattaforma. Una modifica che rende non conforme del codice conforme senza una baseline che la assorba, come rinominare i file di una slice o invertire una dipendenza, alza la versione major. Le correzioni che non cambiano alcuna regola mantengono la versione. Ogni repository che segue SLAT indica nella propria guida per chi contribuisce la versione che adotta.

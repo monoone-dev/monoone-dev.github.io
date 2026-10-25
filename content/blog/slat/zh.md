@@ -4,6 +4,8 @@ SLAT 是一种组织桌面应用后端的模式，适用于用 Rust 编写、以
 
 本页是完整的参考文档。它的写法让从未接触过 SLAT 的团队也能在新项目中采用它，或迁移现有项目，而无需向我们提问。文中包含规则、规则背后的原因、可以直接复制的代码、执行这些规则的检查，以及一个把混乱的应用逐步整理成形的完整示例。
 
+各节编号是固定的。遵循 SLAT 的仓库会在 `docs/slat/SLAT.md` 中保存一份使用相同编号的规则简版，因此像“第 17.8 节”这样的引用，在本页和仓库中指的是同一处内容。两者不一致时，在同一天内一起修正。
+
 > **版本 1.1** · 2026年10月25日。1.1 版新增第 12 节 *平台*：如何把依赖操作系统的代码集中在一处，使日后移植到 Linux 或 Windows 只需在一个文件夹内完成。完整历史见第 22 节。
 
 ## 1. SLAT 为什么存在
@@ -112,7 +114,9 @@ SLAT 的各个部分并不新。它组合了五个广为人知的思想，并把
 | `store` | 持久化：写连接、迁移、schema、索引重建、数据库加密。 | `kit` | `tauri`、领域逻辑、进程 |
 | `drivers` | 外部世界：进程、各提供商的命令行工具、HTTP、sidecar。依赖操作系统的代码只存在于 `drivers/src/platform/`。 | `kit` | `tauri`、`store`、领域逻辑 |
 | `core` | 所有领域切片：模型、逻辑、用例、Actor。 | `kit`、`store`、`drivers` | `tauri` |
-| `app` | 入口：Tauri 命令、DTO、事件、入口服务器（MCP、桥接）、应用状态、`setup`、`main`。 | 以上全部 | 领域逻辑（它属于 `core`） |
+| `app` | 入口：Tauri 命令、DTO、事件、入口服务器（MCP、桥接）、应用状态、`setup`、`main`。 | 其他所有层级 | 领域逻辑（它属于 `core`） |
+
+在本文中，`core/…` 和 `app/…` 是这两个 crate 源码文件夹的简写。`core/src/<slice>/` 即 `crates/<product>-core/src/<slice>/`，`app/src/<slice>/` 即 `src-tauri/src/<slice>/`，也就是 Tauri 为 app crate 创建的文件夹。第 16 节中的检查使用完整路径。
 
 ### 5.1. 编译器就是守卫
 
@@ -160,6 +164,7 @@ name = "quayside_lib"
 
 [dependencies]
 quayside-core = { path = "../crates/quayside-core" }
+quayside-store = { path = "../crates/quayside-store" }
 quayside-kit = { path = "../crates/quayside-kit" }
 tauri = { version = "2", features = [] }
 ```
@@ -170,7 +175,7 @@ tauri = { version = "2", features = [] }
 
 ### 5.3. 何时拆分一个层级
 
-当 `core` 超过大约 60,000 行，或者修改一个切片后完整重建 `core` 变得痛苦时，把一组切片移到 `core-<group>` 中，例如 `quayside-core-run`。总数绝不要超过大约八个 crate。每个 crate 都是一个单独的链接步骤，在笔记本电脑上，机器卡死的代价远高于更细拆分所节省的那几秒。
+当 `core` 超过大约 60,000 行，或者修改一个切片后完整重建 `core` 变得痛苦时，把一组切片移到 `core-<group>` 中，例如 `quayside-core-run`。crate 总数最多保持在六到八个。每个 crate 都是一个单独的链接步骤，在笔记本电脑上，机器卡死的代价远高于更细拆分所节省的那几秒。
 
 ### 5.4. 兼容性例外
 
@@ -213,15 +218,15 @@ mod model;
 mod service;
 mod store;
 
-pub use model::{Recording, RecordingId, RecordingState};
-pub use service::RecordingService;
+pub use model::{Transcript, TranscriptId, Word};
+pub use service::TranscriptService;
 ```
 
 ### 6.2. `app` 中的切片
 
 ```
 app/src/<slice>/
-  mod.rs        `mod …;` plus the list of commands for `generate_handler!`
+  mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
   dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
   events.rs     event names and payloads sent to the window; snapshot subscription loops
@@ -232,7 +237,7 @@ app/src/<slice>/
 ```
 app/src/
   main.rs       calls lib::run(); nothing else
-  lib.rs        run(): Builder, plugins, setup, generate_handler! assembled from <slice>::COMMANDS
+  lib.rs        run(): Builder, plugins, setup, generate_handler! with every command, grouped by slice
   state.rs      AppState: the composition root, section 11
   error.rs      entry error → code and text for the window
   platform.rs   optional: window and menu settings that depend on the operating system, section 12.3
@@ -243,16 +248,16 @@ app/src/
 
 ```rust
 #[tauri::command]
-pub async fn recording_start(
+pub async fn transcript_search(
     state: State<'_, AppState>,
-    input: StartRecordingInput,
-) -> Result<RecordingDto, IpcError> {
-    let recording = state.recordings.start(input.into()).await?;
-    Ok(recording.into())
+    input: SearchInput,
+) -> Result<Vec<TranscriptHitDto>, IpcError> {
+    let hits = state.transcripts.search(input.into()).await?;
+    Ok(hits.into_iter().map(Into::into).collect())
 }
 ```
 
-如果一个命令需要 `if`、循环或两次调用切片，那段逻辑就属于 `service.rs` 或 `logic.rs`。10 行的限制与风格无关。只做转换的命令永远不需要单独的测试，因为它做的一切都已在切片中测试过。
+如果一个命令需要 `if`、循环或两次调用切片，那段逻辑就属于 `service.rs` 或 `logic.rs`。10 行的限制与风格无关。只做转换的命令不需要单独的单元测试，因为它的逻辑已在切片中测试过。剩下需要证明的是人看到的那句话，这要通过入口进行端到端测试（第 14 节）。
 
 ### 6.4. 注册命令
 
@@ -347,7 +352,7 @@ window ─invoke─► commands ─► Handle.send(Msg)
 
 ```rust
 // app/src/recording/events.rs
-pub fn spawn(app: AppHandle, recordings: RecordingsHandle) {
+pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
         while snapshots.changed().await.is_ok() {
@@ -362,7 +367,7 @@ pub fn spawn(app: AppHandle, recordings: RecordingsHandle) {
 
 ### 8.4. 高频数据流
 
-有些切片会产生大量小事件：日志行、转写出的单词、进度刻度。不要每一行都发出一个 Tauri 事件。在 `core` 中给切片一个有界通道，让 `app` 拥有一个**泵（pump）**，每隔几毫秒把这些行批量送入 `tauri::ipc::Channel`。有界通道就是背压：窗口处理变慢时，切片会知道（`Sent::Dropped`），而不是把内存填满。批处理、通道和帧率都是入口的关注点，留在 `app` 中。
+有些切片会产生大量小事件：日志行、转写出的单词、进度刻度。不要每一行都发出一个 Tauri 事件。在 `core` 中给切片一个有界通道：一个属于该切片自己的小型发送端类型（例如第 20.3 节中的 `WordSink`），它的 `send` 从不等待，并返回发生了什么，例如 `Sent::Delivered`、`Sent::Dropped` 或 `Sent::Closed`。让 `app/<s>/events.rs` 拥有一个**泵（pump）**，每隔几毫秒把这些行批量送入 `tauri::ipc::Channel`。有界通道就是背压：窗口处理变慢时，切片会知道（`Sent::Dropped`），而不是把内存填满；当不再有人监听时（`Sent::Closed`），切片可以停下来。批处理、通道和帧率都是入口的关注点，留在 `app` 中。
 ## 9. Actor：带状态的切片
 
 ### 9.1. 何时使用 Actor
@@ -393,7 +398,7 @@ core/src/<slice>/actor/
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
   effect.rs     enum Effect + async fn execute(effect, &Deps) -> Option<Msg>
   run.rs        the loop: recv → update → execute → snapshot.send; started with tokio::spawn
-  handle.rs     struct Handle { tx, snapshot }: send(), ask() with oneshot, subscribe()
+  handle.rs     struct Handle { tx, snapshot }: send(), current(), subscribe(); ask() with a oneshot only when a caller needs a reply
   snapshot.rs   struct Snapshot: what the window sees; From<&State>
 ```
 
@@ -411,7 +416,7 @@ core/src/<slice>/actor/
 
 ### 9.4. 一个完整的小 Actor
 
-一个录音 Actor：启动录音进程，执行时间限制，并且可以取消。所有类型名和函数名仅作示意。
+一个录音 Actor：启动录音进程，执行时间限制，并且可以停止（保留文件）或取消（丢弃文件）。所有类型名和函数名仅作示意。
 
 ```rust
 // msg.rs
@@ -420,6 +425,7 @@ pub enum Msg {
     Started { generation: u64, pid: ProcessId },
     Level { generation: u64, db: f32 },
     Stop { generation: u64 },
+    Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
 }
@@ -445,6 +451,12 @@ pub enum Phase {
     Saved(RecordingFile),
     Cancelled,
 }
+
+impl Phase {
+    pub fn is_active(&self) -> bool {
+        matches!(self, Phase::Starting | Phase::Recording { .. } | Phase::Stopping)
+    }
+}
 ```
 
 ```rust
@@ -452,6 +464,7 @@ pub enum Phase {
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
     StopRecorder { pid: ProcessId },
+    CancelRecorder { pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
     Persist(RecordingFile),
 }
@@ -461,7 +474,7 @@ pub enum Effect {
 // update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
-        Msg::Start { title, limit } if state.phase == Phase::Idle => {
+        Msg::Start { title, limit } if !state.phase.is_active() => {
             state.generation += 1;
             state.phase = Phase::Starting;
             state.title = Some(title.clone());
@@ -489,6 +502,15 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
                 _ => vec![],
             }
         }
+        Msg::Cancel { generation } if generation == state.generation => {
+            match state.phase.clone() {
+                Phase::Recording { pid } => {
+                    state.phase = Phase::Stopping;
+                    vec![Effect::CancelRecorder { pid }]
+                }
+                _ => vec![],
+            }
+        }
         Msg::Ended { generation, outcome } if generation == state.generation => {
             state.level_db = None;
             match outcome {
@@ -507,14 +529,14 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 }
 ```
 
-最后一个分支正是代数的意义所在：来自之前某次录音的 `Level`、`TimedOut` 或 `Ended` 消息带着旧的代数到达，不会改变任何东西。
+只要没有正在进行的录音，就可以开始新的录音，包括在之前的录音已保存或已取消之后。最后一个分支正是代数的意义所在：来自之前某次录音的 `Level`、`TimedOut` 或 `Ended` 消息带着旧的代数到达，不会改变任何东西。
 
 ```rust
 // run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
-    let mailbox = tx.clone();
+    let mailbox = tx.downgrade();
     tokio::spawn(async move {
         let mut state = State::default();
         while let Some(msg) = rx.recv().await {
@@ -523,7 +545,9 @@ pub fn spawn(deps: Deps) -> Handle {
                 let mailbox = mailbox.clone();
                 tokio::spawn(async move {
                     if let Some(next) = execute(effect, &deps).await {
-                        let _ = mailbox.send(next).await;
+                        if let Some(mailbox) = mailbox.upgrade() {
+                            let _ = mailbox.send(next).await;
+                        }
                     }
                 });
             }
@@ -556,6 +580,8 @@ impl Handle {
     }
 }
 ```
+
+循环只为自身效果的结果保留一个弱发送端。当最后一个 `Handle` 被 drop 时，`recv` 返回 `None`，Actor 随之结束，而不是永远等待下去。
 
 当效果的顺序很重要时（例如先持久化再通知），在一个派生出的任务中按顺序执行这些效果，而不是每个效果一个任务。规则只有一条：循环本身从不等待。
 
@@ -593,7 +619,7 @@ pub struct StartRequest {
     pub at_once: Option<NonZeroUsize>,
     pub budget: Option<Money>,
     pub origin: Option<Origin>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-hooks"))]
     pub faults: Faults,
 }
 
@@ -602,7 +628,7 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 }
 ```
 
-调用方写成 `StartRequest { workflow, budget: Some(limit), ..Default::default() }`。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。
+调用方写成 `StartRequest { workflow, budget: Some(limit), ..Default::default() }`。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。单靠 `cfg(test)` 只覆盖该 crate 自己的单元测试，因此集成测试和其他 crate 通过 `test-hooks` feature 启用这些字段，思路与 14.2 中的伪驱动相同。
 
 ## 11. AppState：组合根
 
@@ -615,8 +641,9 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 它不可以持有：
 
 - 描述某个后台过程的 `Mutex<Option<…>>`、`AtomicBool` 或 `Mutex<HashMap<…>>`。那是 Actor 的状态，属于 `core/<slice>/actor/state.rs`；
-- 属于某个切片内部细节的字段（缓存、取消映射、队列）；
-- 此外，切片也不可以把状态藏在 `static` 变量中（`OnceLock<Mutex<…>>`、`LazyLock<Mutex<…>>`）。唯一的例外是只计算一次、在进程存活期间永不改变的常量（`OnceLock<PathBuf>`）。
+- 属于某个切片内部细节的字段（缓存、取消映射、队列）。
+
+此外，切片也不可以把状态藏在 `static` 变量中（`OnceLock<Mutex<…>>`、`LazyLock<Mutex<…>>`）。唯一的例外是只计算一次、在进程存活期间永不改变的常量（`OnceLock<PathBuf>`）。
 
 **检验方法：** `AppState` 的每个字段都能用切片中的一个名词来描述（“recordings”“runs”“account”）。需要一句话才能描述的字段，应当放进切片内部。
 
@@ -625,10 +652,10 @@ pub struct AppState {
     pub paths: kit::paths::AppPaths,
     pub store: store::Store,
     pub recordings: recording::Handle,
-    pub transcripts: Arc<transcript::Service>,
-    pub boards: Arc<board::Service>,
+    pub transcripts: Arc<transcript::TranscriptService>,
+    pub boards: board::Handle,
     pub triggers: trigger::Handle,
-    pub account: Result<Arc<account::Service>, account::Unavailable>,
+    pub account: Result<Arc<account::AccountService>, account::Unavailable>,
 }
 ```
 
@@ -649,6 +676,8 @@ impl<K: Eq + Hash + Clone> Jobs<K> {
 ```
 
 `begin` 会取消同一个键下更早的任务，存入新的代数，并返回一个守卫（guard）；守卫被 drop 时移除该条目，但前提是代数仍然匹配。锁只在这两个简短的函数内部持有，从不跨越 `await`。由于 `Jobs` 是具体类型而不是 trait，它不违反“不写单一实现 trait”的规则。
+
+这并不是第 11 节规则的漏洞。那些规则关心的是状态存放在哪里，而不是它的类型。`kit::Jobs` 内部的锁由某一个切片的服务拥有，且从不跨越 `await` 持有，它是该切片的私有细节。同样的映射如果成为 `AppState` 的字段，就是无人拥有的状态。
 
 ## 12. 平台
 
@@ -746,7 +775,7 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 
 ### 12.4. 路径、文件和文本
 
-- **文件夹只来自 `kit::paths`**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。其底层是一个遵循各系统约定的库（macOS 的 `~/Library/Application Support/<App>`、Linux 的 XDG、Windows 的 `%APPDATA%`）。已经存放在旧路径下的数据，在创建它的系统上继续留在原处（5.4 中的兼容性例外）。
+- **文件夹只来自 `kit::paths`**：`data()`、`config()`、`cache()`、`logs()`、`temp()`。其底层是一个遵循各系统约定的库（macOS 的 `~/Library/Application Support/<App>`、Linux 的 XDG、Windows 的 `%APPDATA%`）。已经存放在旧路径下的数据，在创建它的系统上继续留在原处（5.4 中的兼容性例外）；在那个系统上，`kit::paths` 返回旧路径，因此代码仍然只询问 `kit::paths`。`kit` 本身没有 `#[cfg]`：系统约定来自那个库。
 - **应用创建的文件名一律小写**，并且绝不只靠大小写区分。macOS 和 Windows 的默认文件系统不区分大小写；Linux 区分。
 - **不要重命名或删除别人正打开着的文件。** Windows 会拒绝。原子写入通过 `kit::durable_file` 完成，它会在替换文件之前先关闭文件。
 - **长路径。** 不加 `\\?\` 前缀时，Windows 把路径限制在大约 260 个字符。让工作副本和运行文件夹的层级保持浅；前缀由 `platform` 添加，绝不由切片添加。
@@ -755,7 +784,7 @@ pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
 
 ### 12.5. 平台测试
 
-- **契约测试**位于 `drivers/tests/platform_contract.rs`，对每个操作系统都相同：`terminate` 之后进程已结束；密钥写入后能读回、删除后就消失；私有文件不能被其他用户读取。每个受支持的平台都要通过**同一套**测试。
+- **契约测试**位于 `drivers/tests/it/platform_contract.rs`，是该 crate 唯一集成测试目标（14.1）中的一个模块，对每个操作系统都相同：`terminate` 之后进程已结束；密钥写入后能读回、删除后就消失；私有文件不能被其他用户读取。每个受支持的平台都要通过**同一套**测试。
 - **`drivers` 之外的测试不使用 shell 或信号。** 测试需要的进程是一个小 Rust 程序（测试 crate 中的一个二进制），而不是 `sh -c 'sleep 10'`。
 - 测试中的平台 `#[cfg]` 只允许出现在 `drivers` 的测试里。
 
@@ -825,13 +854,13 @@ impl From<RecordingError> for IpcError {
 | `service.rs` | `#[tokio::test]`，使用真实的 store 和假驱动 | 调用之后文件或数据库的状态 |
 | `actor/` | 一个句柄加一段消息脚本；时间用 `tokio::time::pause` 控制 | `Snapshot` 的序列 |
 | `drivers` | 真实进程或录制下来的数据流 | 进程已结束（`ESRCH` 或空 job）、线上传来的行 |
-| `app/commands` | 通过入口进行的集成测试（端到端测试或集成测试目标） | 人看到的文字 |
+| `app/commands` | 不写单元测试；针对人看到的内容，通过入口进行端到端测试或集成测试 | 人看到的文字 |
 
 针对展示给人看的消息的测试，应当放在人看到它的地方，而不仅仅是 `logic.rs` 里。能产生正确句子的函数，如果没有人调用它，什么也证明不了。
 
 ### 14.1. 一个集成测试二进制
 
-直接放在 `tests/` 下的每个文件都是一个单独的二进制，每个二进制单独链接。在大型工作区中，这意味着每个文件一分钟。把集成测试放进**一个**目标 `tests/it/main.rs`，每个主题一个模块，用过滤器运行单个主题：
+直接放在 `tests/` 下的每个文件都是一个单独的二进制，每个二进制单独链接。在大型工作区中，这意味着每个文件一分钟。给每个 crate **一个**集成测试目标 `tests/it/main.rs`，每个主题一个模块，用过滤器运行单个主题：
 
 ```
 tests/it/
@@ -916,7 +945,9 @@ echo "emit: $(printf '%s\n' "$found" | sed '/^$/d' | wc -l | tr -d ' ') files on
 
 ### 16.2. 检查必须能够失败
 
-在信任一个检查之前，先植入一个真实的违规，看着它变红，然后再删掉。从未变红过的检查从未被测试过。按字符串 grep 的检查可能因为该字符串出现在注释里而通过，这就是为什么上面的模式匹配的是代码形态（`\.emit(`），而不是单词。
+在信任一个检查之前，先植入一个真实的违规，看着它变红，然后再删掉。从未变红过的检查从未被测试过。
+
+SLAT 中的 grep 检查查找的是被禁止的代码，所以注释中的匹配会让它们变红，而不是变绿。这虽然烦人，但很安全，修复办法是删掉那段死代码。危险的是要求某个字符串必须存在的检查：它在注释上也会通过。这类规则要通过运行代码来证明，而不是通过读文本。
 
 ### 16.3. CI 中的平台任务
 
@@ -1004,15 +1035,15 @@ jobs:
 ### 17.8. 这个该放在哪里？（决策树）
 
 ```
-Does it call Tauri, the window, MCP or a remote hub?   → app (commands, events, doors)
-Does it depend on the operating system?                → drivers/src/platform/ (section 12)
-Does it talk to a process, the network, a keychain?    → drivers (through platform contracts)
-Is it a database read/write or the schema?             → store (connection) / core/<s>/store.rs (queries)
-Is it a pure decision or a calculation?                → core/<s>/logic.rs (or update.rs in an actor)
-Is it a domain type?                                   → core/<s>/model.rs
-Is it a sequence of steps with I/O?                    → core/<s>/service.rs
-Is it state that lives in the background and the window watches? → core/<s>/actor/
-Does it have no domain at all (time, paths, ids, files)?          → kit
+它是否调用 Tauri、窗口、MCP 或远程中心？    → app (commands, events, doors)
+它是否依赖操作系统？                        → drivers/src/platform/ (第 12 节)
+它是否与进程、网络或钥匙串打交道？          → drivers (通过平台契约)
+它是数据库读写还是 schema？                 → store (连接) / core/<s>/store.rs (查询)
+它是纯粹的决策或计算吗？                    → core/<s>/logic.rs (Actor 中则为 update.rs)
+它是领域类型吗？                            → core/<s>/model.rs
+它是带 I/O 的一系列步骤吗？                 → core/<s>/service.rs
+它是在后台存活、由窗口观察的状态吗？        → core/<s>/actor/
+它完全没有领域（时间、路径、ID、文件）吗？  → kit
 ```
 
 ## 18. 与编码智能体协作
@@ -1037,7 +1068,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
-- Before adding code, find its place with the decision tree (SLAT section 17.8).
+- Before adding code, find its place with the decision tree (SLAT section 17.8,
+  https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
 ```
@@ -1194,7 +1226,7 @@ fn reveal(path: &Path) {
 
 ### 20.3. 迁移，一步一步
 
-**第 1 步：反转依赖。** 转写器不再接收 `AppHandle`。它把单词写入一个由 `core` 拥有的有界通道；`app` 把通道中的内容泵入窗口。上传代码不再读取 `AppState`，而是以参数形式接收它需要的两个值。
+**第 2 步：反转依赖。** 转写器不再接收 `AppHandle`。它把单词写入一个由 `core` 拥有的有界通道；`app` 把通道中的内容泵入窗口。上传代码不再读取 `AppState`，而是以参数形式接收它需要的两个值。
 
 ```rust
 pub async fn transcribe(file: &Path, words: WordSink) -> Result<Outcome<Transcript>, TranscribeError> {
@@ -1210,9 +1242,9 @@ pub async fn transcribe(file: &Path, words: WordSink) -> Result<Outcome<Transcri
 }
 ```
 
-**第 2 步：拆分 `app` 和 `core`。** 建立一个工作区，包含 `quayside-core`（不含 `tauri`），并把现有的 `src-tauri` 作为 `app`。app 中的 `lib.rs` 保留 `pub use quayside_core::{…};`，让每个旧路径仍能编译。证明：在 `core` 中植入 `use tauri::Manager;` 会编译失败。
+**第 3 步：拆分 `app` 和 `core`。** 建立一个工作区，包含 `quayside-core`（不含 `tauri`），并把现有的 `src-tauri` 作为 `app`。app 中的 `lib.rs` 保留 `pub use quayside_core::{…};`，让每个旧路径仍能编译。证明：在 `core` 中植入 `use tauri::Manager;` 会编译失败。
 
-**第 3 步：`kit`、`store`、`drivers`。** 九处 SQLite 打开操作合并为 `quayside-store` 中的一个写入器。录音器、转写器、模型客户端和 `git` 移入 `quayside-drivers`。23 个含 `#[cfg]` 的文件变成一个 `platform/` 文件夹，包含 `unix.rs`、`macos.rs` 和 `unsupported.rs`，而 `reveal` 变成一个契约：
+**第 4 步：`kit`、`store`、`drivers`。** 九处 SQLite 打开操作合并为 `quayside-store` 中的一个写入器。录音器、转写器、模型客户端和 `git` 移入 `quayside-drivers`。23 个含 `#[cfg]` 的文件变成一个 `platform/` 文件夹，包含 `unix.rs`、`macos.rs` 和 `unsupported.rs`，而 `reveal` 变成一个契约：
 
 ```rust
 pub fn reveal_path(path: &Path) -> Result<(), PlatformError> {
@@ -1223,15 +1255,15 @@ pub fn reveal_path(path: &Path) -> Result<(), PlatformError> {
 
 没有 shell，没有引号转义，没有注入。
 
-**第 4 步：切片。** 把 `handlers.rs` 和 `utils.rs` 拆分为切片，从最小的开始：
+**第 5 步：切片。** 把 `handlers.rs` 和 `utils.rs` 拆分为切片，从最小的开始：
 
 ```
-settings → device → model → summary → transcript → board → companion → agent → recording
+settings → device → llm → summary → transcript → board → companion → agent → recording
 ```
 
-**第 5 步：`kit::Jobs`。** `transcribing` 和 `summarizing`（两个存放取消令牌的映射）分别变为转写服务中的一个 `Jobs<TranscriptId>` 和摘要服务中的一个 `Jobs<SummaryId>`。
+**第 6 步：`kit::Jobs`。** `transcribing` 和 `summarizing`（两个存放取消令牌的映射）分别变为转写服务中的一个 `Jobs<TranscriptId>` 和摘要服务中的一个 `Jobs<SummaryId>`。
 
-**第 6 步：Actor。** 有三部分状态通过了 9.1 中的测试：录音、智能体运行和看板同步。录音最先迁移，并针对当前行为编写 `update` 测试。`AtomicBool` 消失了；停止操作现在携带它所针对的那次录音的代数，20.2 中的泄漏变成了一个一行的测试，并且永远保持通过。七个 `start_recording_*` 函数合并为一个：
+**第 7 步：Actor。** 有三部分状态通过了 9.1 中的测试：录音、智能体运行和看板同步。录音最先迁移，并针对当前行为编写 `update` 测试。`AtomicBool` 消失了；停止操作现在携带它所针对的那次录音的代数，20.2 中的泄漏变成了一个一行的测试，并且永远保持通过。七个 `start_recording_*` 函数合并为一个：
 
 ```rust
 pub struct StartRecording {
@@ -1243,7 +1275,7 @@ pub struct StartRecording {
 }
 ```
 
-**第 7 步：检查。** 第 16 节中的每个检查都带着各自的基线开启。大多数基线已经是空的，因为上面的步骤已经消除了这些违规。
+**第 8 步：检查。** 第 16 节中的每个检查都带着各自的基线开启。大多数基线已经是空的，因为上面的步骤已经消除了这些违规。
 
 ### 20.4. 之后
 
@@ -1264,7 +1296,7 @@ crates/
       agent/      mod.rs model.rs logic.rs store.rs service.rs actor/
       board/      mod.rs model.rs logic.rs store.rs service.rs actor/
       companion/  mod.rs model.rs logic.rs store.rs service.rs
-      device/  model/  settings/  guard/
+      device/  llm/  settings/  guard/
 src-tauri/
   src/
     main.rs lib.rs state.rs error.rs platform.rs
@@ -1344,7 +1376,7 @@ pub async fn recording_stop(
 共享部分成为独立的切片，两者都依赖它。任何情况下都不允许循环依赖。
 
 **为什么命令上限是 10 行？**
-因为只做转换的命令不需要自己的测试。十行足以完成反序列化、调用和映射，却不足以藏下一个决策。
+因为只做转换的命令不需要自己的单元测试。十行足以完成反序列化、调用和映射，却不足以藏下一个决策。
 
 **SLAT 会拖慢编译吗？**
 拆分为多个 crate 通常会加快增量构建，因为修改一个切片不会重建 `kit`、`store` 或 `drivers`。由于多了链接步骤，干净构建可能会稍慢一些，这也是 SLAT 限制 crate 数量的原因。
@@ -1362,4 +1394,4 @@ pub async fn recording_stop(
 | 1.1 | 2026年10月25日 | 第 12 节 *平台*：`drivers` 中的 `platform/` 文件夹、平台契约、`platform/` 之外的禁止项、路径、文件和文本规则、平台测试、Linux 和 Windows 上的 CI 编译任务、移植配方。补充了层级、执行机制、配方和决策树的内容。 |
 | 1.0 | 2026年10月24日 | 第一版：层级、带固定层的切片、导入规则、数据流、Actor、作为组合根的应用状态、错误、测试、规模上限、执行机制、配方和迁移。 |
 
-SLAT 像库一样进行版本管理。规则的修改会提升次版本号；让现有合规代码变得不合规的修改会提升主版本号。每个遵循 SLAT 的仓库都要在贡献者指南中写明它所遵循的版本。
+SLAT 像库一样进行版本管理。新规则如果附带基线列表，就提升次版本号：现有代码保持合规，只有新的违规会变红。1.1 正是这样加入平台规则的。让合规代码变得不合规、且没有基线可以吸收的修改，例如重命名切片的文件或反转依赖方向，会提升主版本号。不改变任何规则的更正保持版本号不变。每个遵循 SLAT 的仓库都要在贡献者指南中写明它所遵循的版本。
