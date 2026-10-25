@@ -6,7 +6,7 @@ Ta strona jest kompletną dokumentacją. Napisaliśmy ją tak, żeby zespół, k
 
 Numery sekcji są stałe. Repozytorium, które stosuje SLAT, trzyma krótką kopię reguł w `docs/slat/SLAT.md` z tymi samymi numerami, więc odwołanie takie jak „sekcja 17.8” znaczy to samo na tej stronie i w repozytorium. Gdy te dwa teksty się rozchodzą, oba poprawia się tego samego dnia. Nową sekcję dodaje się tuż przed historią wersji, która zawsze zostaje ostatnia.
 
-> **Wersja 1.3** · 25 października 2026. Wersja 1.3 dodaje sekcję 23, *Pluginy*: opcjonalną część dla produktów, w których użytkownik włącza i wyłącza funkcje. Mówi, kiedy funkcja jest pluginem, podaje jedną regułę o kierunku (slice bazowy nigdy nie importuje slice'a pluginu), punkty rozszerzeń, jeden build z przełącznikiem przy starcie i checki, które pilnują, żeby to było uczciwe. Workspace bez pluginów nie wymaga żadnej zmiany. Pełna historia jest w sekcji 24.
+> **Wersja 1.3** · 25 października 2026. Wersja 1.3 dodaje sekcję 23, *Pluginy*: opcjonalną część dla produktów, w których użytkownik włącza i wyłącza funkcje. Mówi, kiedy funkcja jest pluginem, podaje jedną regułę o kierunku (slice bazowy nigdy nie importuje slice'a pluginu), punkty rozszerzeń, jeden build z przełącznikiem przy starcie i checki, które pilnują, żeby to było uczciwe. Workspace bez pluginów nie wymaga żadnej zmiany. Wersja 1.3 poprawia też resztę dokumentu tam, gdzie przeczył sam sobie albo zostawiał otwarte pytanie: od komendy testów w 22.1 po kompletny przykładowy aktor w 9.4. Pełna historia jest w sekcji 24.
 
 ## 1. Po co jest SLAT
 
@@ -83,7 +83,7 @@ Sześć zdań do zapamiętania:
 | **Snapshot** (migawka) | To, co okno widzi z aktora, publikowane przez kanał `watch`. | `select(…)` |
 | **Entry** (wejście) | Sposób, w jaki świat zewnętrzny woła backend: komenda Tauri, serwer MCP, lokalny most, zdalny hub. | Komponent ekranu |
 | **Query** (zapytanie) | Odczyt bez efektów ubocznych. | Selektor |
-| **Command** (polecenie) | Zmiana stanu. | Akcja |
+| **Command** (polecenie) | Zmiana stanu. *Komenda Tauri* to coś innego: funkcja, którą wywołuje okno, a która może wykonać zapytanie albo polecenie. | Akcja |
 | **Event** (zdarzenie) | Backend informuje frontend, że coś się zmieniło, bez pytania. | Wypchnięcie do store'a |
 | **Platform** (platforma) | System operacyjny, na który budujemy: `macos`, `linux`, `windows`. | Docelowa przeglądarka |
 | **Platform contract** (kontrakt platformy) | Funkcja w `drivers::platform`, która znaczy to samo na każdym systemie operacyjnym. | Polyfill |
@@ -114,14 +114,14 @@ Workspace SLAT ma najwyżej pięć rodzajów crate'ów. Ich nazwy mają postać 
 | Tier | Co tu mieszka | Może zależeć od | Nigdy |
 |---|---|---|---|
 | `kit` | Wspólne typy i narzędzia bez domeny: identyfikatory, czas, ścieżki (`kit::paths`), trwały zapis plików, bazowy typ błędu, logowanie. | tylko zewnętrznych bibliotek | `tauri`, `tokio::process`, SQL, `#[cfg]` systemu operacyjnego, cokolwiek z produktu |
-| `store` | Trwałość danych: połączenie zapisujące, migracje, schemat, przebudowa indeksu, szyfrowanie bazy. | `kit` | `tauri`, logika domenowa, procesy |
+| `store` | Trwałość danych: połączenie zapisujące i połączenia do odczytu, migracje, schemat, przebudowa indeksu, szyfrowanie bazy. | `kit` | `tauri`, logika domenowa, procesy |
 | `drivers` | Świat zewnętrzny: procesy, narzędzia wiersza poleceń dostawców, HTTP, sidecary. Kod zależny od systemu operacyjnego mieszka wyłącznie w `drivers/src/platform/`. | `kit` | `tauri`, `store`, logika domenowa |
 | `core` | Wszystkie slice'y domenowe: model, logika, przypadki użycia, aktorzy. | `kit`, `store`, `drivers` | `tauri` |
 | `app` | Wejścia: komendy Tauri, DTO, zdarzenia, serwery wejściowe (MCP, most), stan aplikacji, `setup`, `main`. | każdego innego tieru | logika domenowa (jej miejsce jest w `core`) |
 
 W tym dokumencie `core/…` i `app/…` to skróty od folderów źródłowych obu crate'ów. `core/src/<slice>/` to `crates/<product>-core/src/<slice>/`, a `app/src/<slice>/` to `src-tauri/src/<slice>/`, czyli folder, który Tauri tworzy dla crate'a aplikacji. Checki z sekcji 16 używają pełnych ścieżek.
 
-Kompletny workspace SLAT: Quayside, przykładowa aplikacja z sekcji 20, po migracji.
+Kształt workspace'u SLAT: Quayside, przykładowa aplikacja z sekcji 20, po migracji, skrócona do dwóch slice'ów i czterech checków. Sekcja 20.4 wymienia wszystkie jej slice'y.
 
 ```tree
 quayside/
@@ -221,8 +221,9 @@ Strzałki między tierami są zapisane w `Cargo.toml` każdego crate'a. Jeśli `
 
 Minimalny workspace:
 
+`Cargo.toml`:
+
 ```toml
-# Cargo.toml (workspace root)
 [workspace]
 resolver = "3"
 members = ["crates/*", "src-tauri"]
@@ -233,8 +234,9 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 ```
 
+`crates/quayside-core/Cargo.toml`:
+
 ```toml
-# crates/quayside-core/Cargo.toml
 [package]
 name = "quayside-core"
 version = "0.1.0"
@@ -249,8 +251,9 @@ serde.workspace = true
 thiserror.workspace = true
 ```
 
+`src-tauri/Cargo.toml`:
+
 ```toml
-# src-tauri/Cargo.toml — the app tier keeps the name the bundler already knows
 [package]
 name = "quayside"
 version = "0.1.0"
@@ -327,7 +330,7 @@ pub use service::TranscriptService;
 app/src/<slice>/
   mod.rs        `mod …;` and `pub mod commands;` (the command list itself is in lib.rs, 6.4)
   commands.rs   #[tauri::command] functions; at most 10 lines each
-  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>
+  dto.rs        wire types: serde camelCase, #[serde(other)] on enums, From<model>, From<error> for IpcError
   events.rs     event names and payloads sent to the window; snapshot subscription loops
 ```
 
@@ -400,7 +403,7 @@ Komenda, która istnieje w slice'ie, ale brakuje jej na tej liście, kompiluje s
 | `store.rs` | `model`, crate `store` | `drivers`, `service`, `logic` innych slice'ów |
 | `service.rs` | `model`, `logic`, `store.rs`, `drivers`, publiczne API innych slice'ów | `tauri`, stanu globalnego |
 | `actor/*` | `model`, `logic`, `service`, `drivers` | `tauri`; a `update.rs` także żadnego I/O |
-| `app/<slice>/dto.rs` | `model` slice'a | `service`, `store` |
+| `app/<slice>/dto.rs` | `model` i typ błędu slice'a, `IpcError` | `service`, `store` |
 | `app/<slice>/commands.rs` | publiczne API slice'a, `dto`, `AppState` | `store`, `drivers`, `logic` |
 
 ### 7.2. Między slice'ami
@@ -449,8 +452,9 @@ window ─invoke─► commands ─► Handle.send(Msg)
 
 Zdarzenia są emitowane **wyłącznie** z `app/<s>/events.rs`. Slice w `core` publikuje zmiany przez `watch::Sender<Snapshot>` albo `broadcast::Sender<Event>`. `events.rs` subskrybuje i woła `emit`. Dzięki temu `core` nie wie o istnieniu okna, a frontend ma dokładnie jedno miejsce, z którego przychodzą zdarzenia każdego slice'a. Nazwy zdarzeń mają postać `<slice>:<event>`, na przykład `recording:snapshot`.
 
+`app/src/recording/events.rs`:
+
 ```rust
-// app/src/recording/events.rs
 pub fn spawn(app: AppHandle, recordings: recording::Handle) {
     let mut snapshots = recordings.subscribe();
     tauri::async_runtime::spawn(async move {
@@ -492,7 +496,7 @@ W każdym innym przypadku użyj zwykłego `service.rs`. Nie każda funkcja w NgR
 
 ```tree
 core/src/<slice>/actor/
-  mod.rs        pub use Handle, Msg, Snapshot
+  mod.rs        pub use Deps, Handle, Msg, Snapshot, spawn
   msg.rs        enum Msg: everything that can happen (from the window, a process, a timer)
   state.rs      struct State: the only place where the state exists
   update.rs     fn update(state: &mut State, msg: Msg) -> Vec<Effect>; pure, no I/O, no async
@@ -518,8 +522,9 @@ core/src/<slice>/actor/
 
 Aktor nagrywania, który uruchamia proces rejestratora, pilnuje limitu czasu i da się go zatrzymać (plik zostaje) albo anulować (plik jest odrzucany). Wszystkie nazwy typów i funkcji są przykładowe.
 
+`msg.rs`:
+
 ```rust
-// msg.rs
 pub enum Msg {
     Start { title: String, limit: Duration },
     Started { generation: u64, pid: ProcessId },
@@ -528,11 +533,13 @@ pub enum Msg {
     Cancel { generation: u64 },
     TimedOut { generation: u64 },
     Ended { generation: u64, outcome: Outcome<RecordingFile> },
+    Failed { generation: u64 },
 }
 ```
 
+`state.rs`:
+
 ```rust
-// state.rs
 #[derive(Default)]
 pub struct State {
     pub generation: u64,
@@ -550,6 +557,7 @@ pub enum Phase {
     Stopping,
     Saved(RecordingFile),
     Cancelled,
+    Failed,
 }
 
 impl Phase {
@@ -559,19 +567,52 @@ impl Phase {
 }
 ```
 
+`effect.rs`:
+
 ```rust
-// effect.rs
 pub enum Effect {
     SpawnRecorder { generation: u64, title: String },
-    StopRecorder { pid: ProcessId },
-    CancelRecorder { pid: ProcessId },
+    StopRecorder { generation: u64, pid: ProcessId },
+    CancelRecorder { generation: u64, pid: ProcessId },
     StartTimer { generation: u64, after: Duration },
-    Persist(RecordingFile),
+    Persist { generation: u64, file: RecordingFile },
+}
+
+#[derive(Clone)]
+pub struct Deps {
+    pub recorder: drivers::recorder::Recorder,
+    pub recordings: Arc<RecordingStore>,
+}
+
+pub async fn execute(effect: Effect, deps: &Deps) -> Option<Msg> {
+    match effect {
+        Effect::SpawnRecorder { generation, title } => Some(match deps.recorder.start(&title).await {
+            Ok(pid) => Msg::Started { generation, pid },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StopRecorder { generation, pid } => Some(match deps.recorder.stop(pid).await {
+            Ok(file) => Msg::Ended { generation, outcome: Outcome::Done(file) },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::CancelRecorder { generation, pid } => Some(match deps.recorder.discard(pid).await {
+            Ok(()) => Msg::Ended { generation, outcome: Outcome::Cancelled },
+            Err(_) => Msg::Failed { generation },
+        }),
+        Effect::StartTimer { generation, after } => {
+            tokio::time::sleep(after).await;
+            Some(Msg::TimedOut { generation })
+        }
+        Effect::Persist { generation, file } => match deps.recordings.save(&file).await {
+            Ok(()) => None,
+            Err(_) => Some(Msg::Failed { generation }),
+        },
+    }
 }
 ```
 
+`update.rs`:
+
 ```rust
-// update.rs
 pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Start { title, limit } if !state.phase.is_active() => {
@@ -597,7 +638,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::StopRecorder { pid }]
+                    vec![Effect::StopRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -606,7 +647,7 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match state.phase.clone() {
                 Phase::Recording { pid } => {
                     state.phase = Phase::Stopping;
-                    vec![Effect::CancelRecorder { pid }]
+                    vec![Effect::CancelRecorder { generation, pid }]
                 }
                 _ => vec![],
             }
@@ -616,13 +657,18 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
             match outcome {
                 Outcome::Done(file) => {
                     state.phase = Phase::Saved(file.clone());
-                    vec![Effect::Persist(file)]
+                    vec![Effect::Persist { generation, file }]
                 }
                 Outcome::Cancelled => {
                     state.phase = Phase::Cancelled;
                     vec![]
                 }
             }
+        }
+        Msg::Failed { generation } if generation == state.generation => {
+            state.phase = Phase::Failed;
+            state.level_db = None;
+            vec![]
         }
         _ => vec![],
     }
@@ -631,8 +677,11 @@ pub fn update(state: &mut State, msg: Msg) -> Vec<Effect> {
 
 Nowe nagranie może się zacząć zawsze, gdy nic nie jest w toku, także po tym, jak wcześniejsze zostało zapisane albo anulowane. Ostatnie ramię to cały sens generacji: komunikat `Level`, `TimedOut` albo `Ended` z wcześniejszego nagrania przychodzi ze starą generacją i niczego nie zmienia.
 
+`Start` w trakcie nagrania też niczego nie zmienia. Okno nie oferuje wtedy Startu, bo snapshot mówi, że nagranie trwa; wywołujący, który potrzebuje odpowiedzi, używa `ask` z kanałem oneshot (9.2). `Failed` to koniec, gdy rejestrator nie mógł się uruchomić, zatrzymać albo zapisać. Zanim driver zwróci ten błąd, już zabił proces i udowodnił, że proces nie żyje (17.5), więc `Failed` nigdy nie zostawia działającego rejestratora.
+
+`run.rs`:
+
 ```rust
-// run.rs
 pub fn spawn(deps: Deps) -> Handle {
     let (tx, mut rx) = mpsc::channel(64);
     let (snapshot_tx, snapshot_rx) = watch::channel(Snapshot::default());
@@ -651,15 +700,23 @@ pub fn spawn(deps: Deps) -> Handle {
                     }
                 });
             }
-            snapshot_tx.send_replace(Snapshot::from(&state));
+            let next = Snapshot::from(&state);
+            snapshot_tx.send_if_modified(|current| {
+                let changed = *current != next;
+                if changed {
+                    *current = next;
+                }
+                changed
+            });
         }
     });
     Handle::new(tx, snapshot_rx)
 }
 ```
 
+`handle.rs`:
+
 ```rust
-// handle.rs
 #[derive(Clone)]
 pub struct Handle {
     tx: mpsc::Sender<Msg>,
@@ -667,6 +724,10 @@ pub struct Handle {
 }
 
 impl Handle {
+    pub(super) fn new(tx: mpsc::Sender<Msg>, snapshot: watch::Receiver<Snapshot>) -> Self {
+        Self { tx, snapshot }
+    }
+
     pub async fn send(&self, msg: Msg) -> Result<(), ActorGone> {
         self.tx.send(msg).await.map_err(|_| ActorGone)
     }
@@ -680,6 +741,49 @@ impl Handle {
     }
 }
 ```
+
+`snapshot.rs`:
+
+```rust
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Snapshot {
+    pub generation: u64,
+    pub phase: Phase,
+    pub title: Option<String>,
+    pub level_db: Option<i8>,
+}
+
+impl From<&State> for Snapshot {
+    fn from(state: &State) -> Self {
+        Self {
+            generation: state.generation,
+            phase: state.phase.clone(),
+            title: state.title.clone(),
+            level_db: state.level_db.map(|db| db.round() as i8),
+        }
+    }
+}
+```
+
+`mod.rs`:
+
+```rust
+mod effect;
+mod handle;
+mod msg;
+mod run;
+mod snapshot;
+mod state;
+mod update;
+
+pub use effect::Deps;
+pub use handle::Handle;
+pub use msg::Msg;
+pub use run::spawn;
+pub use snapshot::Snapshot;
+```
+
+Generację potrzebną do Stop i Cancel okno bierze ze snapshotu. Pętla wysyła snapshot tylko wtedy, gdy się zmienił (`send_if_modified`), a poziom jest zaokrąglany do pełnych decybeli, więc miernik, który raportuje co kilka milisekund, nie zamienia każdego raportu w zdarzenie dla okna. Wartość, która zmienia się szybciej, niż okno potrafi ją narysować, należy do strumienia (8.4), a nie do snapshotu.
 
 Na wyniki własnych efektów pętla trzyma tylko słabą referencję do nadawcy. Gdy ostatni `Handle` zostanie zwolniony, `recv` zwraca `None` i aktor kończy pracę, zamiast czekać w nieskończoność.
 
@@ -705,14 +809,13 @@ fn a_late_timeout_from_an_earlier_recording_changes_nothing() {
 }
 ```
 
-Kilka testów steruje całym aktorem przez jego `Handle` z `tokio::time::pause()`, fałszywym driverem i asercjami na sekwencji snapshotów.
+Kilka testów steruje całym aktorem przez jego `Handle` z `tokio::time::pause()`, szwem na danych albo fałszywym driverem (14.2) i asercjami na sekwencji snapshotów.
 
 ## 10. Eksplozja wariantów
 
 Rodzina funkcji takich jak `start_with_budget`, `start_with_slots`, `start_with_snapshot_hook`, `start_with_budget_and_slots` to sygnał, że brakuje struktury żądania. Zastąp całą rodzinę jedną funkcją wejściową i jedną strukturą opcji:
 
 ```rust
-#[derive(Default)]
 pub struct StartRequest {
     pub workflow: WorkflowRef,
     pub task: Option<String>,
@@ -723,12 +826,26 @@ pub struct StartRequest {
     pub faults: Faults,
 }
 
+impl StartRequest {
+    pub fn new(workflow: WorkflowRef) -> Self {
+        Self {
+            workflow,
+            task: None,
+            at_once: None,
+            budget: None,
+            origin: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            faults: Faults::default(),
+        }
+    }
+}
+
 pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>, StartError> {
     todo!()
 }
 ```
 
-Wywołujący piszą `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Nowa opcja to jedno nowe pole, a nie nowa funkcja i nowa linia w każdym miejscu wywołania. Punkty wstrzyknięć tylko dla testów (`faults`, `hooks`) to pola, które istnieją wyłącznie w buildzie testowym. Samo `cfg(test)` obejmuje tylko testy jednostkowe danego crate'a, więc testy integracyjne i inne crate'y włączają te pola feature'em `test-hooks`, na tej samej zasadzie co fałszywy driver z 14.2. Włączaj go tak samo w każdej komendzie testów (sekcja 22.3); inaczej każde przełączenie między buildem z tym feature'em a buildem bez niego kompiluje od nowa ten crate i wszystko nad nim.
+Wywołujący piszą `StartRequest { budget: Some(limit), ..StartRequest::new(workflow) }`. Pola, bez których żądanie nie może się obejść, są argumentami `new`, więc żądanie bez workflow się nie kompiluje; `Default` by takie stworzył. Nowa opcja to jedno nowe pole, a nie nowa funkcja i nowa linia w każdym miejscu wywołania. Punkty wstrzyknięć tylko dla testów (`faults`, `hooks`) to pola, które istnieją wyłącznie w buildzie testowym. Samo `cfg(test)` obejmuje tylko testy jednostkowe danego crate'a, więc testy integracyjne i inne crate'y włączają te pola feature'em `test-hooks`, na tej samej zasadzie co fałszywy driver z 14.2. Włączaj go tak samo w każdej komendzie testów (sekcja 22.3); inaczej każde przełączenie między buildem z tym feature'em a buildem bez niego kompiluje od nowa ten crate i wszystko nad nim.
 
 ## 11. AppState, korzeń kompozycji
 
@@ -844,16 +961,18 @@ Reguły kontraktów:
 
 Krótki przykład kontraktu i jego strony macOS:
 
+`drivers/src/platform/macos.rs`:
+
 ```rust
-// drivers/src/platform/macos.rs
 pub fn open_path(path: &Path) -> Result<(), PlatformError> {
     let status = Command::new("/usr/bin/open").arg(path).status()?;
     status.success().then_some(()).ok_or(PlatformError::Refused("open"))
 }
 ```
 
+`drivers/src/platform/unsupported.rs`:
+
 ```rust
-// drivers/src/platform/unsupported.rs
 pub fn open_path(_path: &Path) -> Result<(), PlatformError> {
     Err(PlatformError::Unsupported("open_path"))
 }
@@ -875,7 +994,7 @@ Jedynym wyjątkiem jest `app/src/platform.rs`, na rzeczy, które zna tylko Tauri
 
 ### 12.4. Ścieżki, pliki i tekst
 
-- **Foldery pochodzą wyłącznie z `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Pod spodem jest biblioteka, która stosuje konwencję każdego systemu (macOS `~/Library/Application Support/<App>`, Linux XDG, Windows `%APPDATA%`). Dane, które już leżą pod starszą ścieżką, zostają tam na systemie, na którym powstały (wyjątek dla zgodności z 5.4); na tym systemie `kit::paths` zwraca starszą ścieżkę, więc kod nadal pyta wyłącznie `kit::paths`. Sam `kit` nie ma `#[cfg]`: konwencję systemu dostarcza biblioteka.
+- **Foldery pochodzą wyłącznie z `kit::paths`**: `data()`, `config()`, `cache()`, `logs()`, `temp()`. Pod spodem jest biblioteka, która stosuje konwencję każdego systemu (macOS `~/Library/Application Support/<App>`, Linux XDG, Windows `%APPDATA%`). Dane, które już leżą pod starszą ścieżką, zostają tam (wyjątek dla zgodności z 5.4): gdy starszy folder istnieje, `kit::paths` go zwraca, więc kod nadal pyta wyłącznie `kit::paths`. Wybór zależy od tego, czy ten folder istnieje, a nie od systemu operacyjnego, więc sam `kit` nie ma `#[cfg]`; konwencję systemu dostarcza biblioteka.
 - **Nazwy plików tworzonych przez aplikację są pisane małymi literami** i nigdy nie różnią się wyłącznie wielkością liter. Domyślne systemy plików macOS i Windows ich nie rozróżniają; Linux tak.
 - **Nie zmieniaj nazwy ani nie usuwaj pliku, który ktoś trzyma otwarty.** Windows odmówi. Atomowe zapisy przechodzą przez `kit::durable_file`, który zamyka plik przed jego podmianą.
 - **Długie ścieżki.** Windows ogranicza ścieżki do około 260 znaków bez prefiksu `\\?\`. Kopie robocze i foldery biegów trzymaj płytko; prefiks dodaje `platform`, nigdy slice.
@@ -909,9 +1028,9 @@ Jeśli port wymaga zmiany w `core`, coś przeciekło. Najpierw osobny pull reque
 ## 13. Błędy
 
 - **Każdy crate ma własny enum błędów** (z `thiserror`). Slice może mieć własny w `error.rs`.
-- **`core` zwraca błędy domenowe.** `app/error.rs` zamienia je na kod i zdanie dla okna. Zdanie pochodzi z waszej tabeli tłumaczeń, nigdy z `Display` enuma przesyłanego przez granicę.
+- **`core` zwraca błędy domenowe.** `app/<slice>/dto.rs` zamienia błędy slice'a na kod i klucz zdania dla okna, obok pozostałych typów slice'a przesyłanych przez granicę. `app/error.rs` zawiera tylko sam `IpcError`, więc nowy slice dodaje swoje błędy we własnym folderze, a nie we wspólnym pliku. Zdanie pochodzi z waszej tabeli tłumaczeń, nigdy z `Display` enuma przesyłanego przez granicę.
 - **Nieznane zdarzenie z zewnątrz to nie błąd.** Używaj `#[serde(other)]` na enumach i `Option<T>` na polach, które nie są niezbędne. Zaloguj nieznaną linię do debugowania i idź dalej. Nowa wersja narzędzia wiersza poleceń dostawcy nie może nigdy zatrzymać biegu.
-- **`unwrap()` i `panic!` są zakazane** poza testami w `core`, `store` i `drivers`. Używaj `?` z wariantem błędu albo `expect()` z powodem, który wyjaśnia, dlaczego wartości nie może zabraknąć.
+- **`unwrap()` i `panic!` są zakazane** poza testami w `kit`, `store`, `drivers` i `core`. Używaj `?` z wariantem błędu albo `expect()` z powodem, który wyjaśnia, dlaczego wartości nie może zabraknąć.
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -925,8 +1044,9 @@ pub enum RecordingError {
 }
 ```
 
+`app/src/error.rs`:
+
 ```rust
-// app/src/error.rs
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcError {
@@ -934,6 +1054,16 @@ pub struct IpcError {
     message_key: &'static str,
 }
 
+impl IpcError {
+    pub fn new(code: &'static str, message_key: &'static str) -> Self {
+        Self { code, message_key }
+    }
+}
+```
+
+`app/src/recording/dto.rs`:
+
+```rust
 impl From<RecordingError> for IpcError {
     fn from(error: RecordingError) -> Self {
         match error {
@@ -951,7 +1081,7 @@ impl From<RecordingError> for IpcError {
 |---|---|---|
 | `logic.rs`, `update.rs` | zwykły `#[test]`, bez tokio | asercja na wartości albo na liście efektów |
 | `store.rs` | baza danych w folderze tymczasowym | wiersz zwrócony przez odczyt |
-| `service.rs` | `#[tokio::test]` z prawdziwym store'em i fałszywym driverem | stan plików albo bazy danych po wywołaniu |
+| `service.rs` | `#[tokio::test]` z prawdziwym store'em i szwem na danych (14.2) | stan plików albo bazy danych po wywołaniu |
 | `actor/` | `Handle` plus scenariusz komunikatów; czas przez `tokio::time::pause` | sekwencja `Snapshot`ów |
 | `drivers` | prawdziwy proces albo nagrany strumień | proces nie żyje (`ESRCH` albo pusty job), linie z zewnątrz |
 | `app/commands` | bez testu jednostkowego; test end-to-end albo integracyjny przez wejście, dla tego, co widzi człowiek | tekst, który widzi człowiek |
@@ -1022,6 +1152,34 @@ proptest! {
 
 `messages(n)` to strategia z modułu testowego, która buduje losowe wartości `Msg`, a `Msg::generation()` to mały helper, który zwraca generację niesioną przez komunikat. Wyciek z sekcji 20.2 to dokładnie ten rodzaj błędu, który taki test znajduje sam: nikt nie musi wymyślać kolejności komunikatów, która go wywołuje.
 
+### 14.5. Test przez wejście
+
+Zdanie, które widzi człowiek, udowadnia się przez wejście: prawdziwa komenda i prawdziwy `AppState`, bez okna. Feature `test` w Tauri ma atrapę runtime'u, która uruchamia komendę tak, jak robi to okno. Test jest modułem `tests/it` crate'a `app` i rejestruje komendy, które woła:
+
+```rust
+#[test]
+fn reading_a_transcript_that_is_gone_says_so() {
+    let app = tauri::test::mock_builder()
+        .manage(support::app_state())
+        .invoke_handler(tauri::generate_handler![transcript::commands::transcript_read])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("the test app could not start");
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("the test window could not open");
+
+    let reply = tauri::test::get_ipc_response(
+        &window,
+        support::invoke("transcript_read", serde_json::json!({ "id": "gone" })),
+    );
+
+    let error = reply.expect_err("a missing transcript must be refused");
+    assert_eq!(support::english(&error["messageKey"]), "This transcript no longer exists.");
+}
+```
+
+`support::app_state()` składa `AppState` na tymczasowym folderze, `support::invoke` buduje `tauri::webview::InvokeRequest` z `tauri::test::INVOKE_KEY`, a `support::english` szuka klucza w tym samym pliku tłumaczeń, którego używa frontend. Test, który kończy się na `messageKey`, dowodzi tylko mapowania; dowodem jest zdanie.
+
 ## 15. Limity rozmiaru
 
 | Jednostka | Próg ostrzeżenia | Co zrobić |
@@ -1042,17 +1200,18 @@ Najpierw mechanizm, potem słowa. Reguła, którą może sprawdzić skrypt, nigd
 |---|---|
 | tylko `app` zna Tauri | `Cargo.toml` (nigdzie indziej nie ma zależności `tauri`); `cargo-deny` dla zależności przechodnich (16.5) |
 | tiery zależą tylko w dół | `Cargo.toml` |
-| tylko `store` otwiera połączenie zapisujące | check oparty na grepie: `Connection::open` tylko w crate'cie `store`. Pliki `store.rs` slice'ów używają typów `rusqlite`, więc sama zależność nie wystarcza. |
-| `#[tauri::command]` tylko w `app/*/commands.rs` | check oparty na grepie |
+| tylko `store` otwiera połączenia z bazą danych | `checks/slat-writer.sh`: `Connection::open` tylko w crate'cie `store`, który wydaje jedno połączenie zapisujące i połączenia do odczytu. `store.rs` slice'a je otrzymuje i używa typów `rusqlite`, więc sama zależność nie wystarcza. |
+| `#[tauri::command]` tylko w `app/**/commands.rs` | check oparty na grepie |
 | każda komenda jest zarejestrowana | check porównujący komendy w slice'ach z `generate_handler!` |
-| `emit` tylko w `app/*/events.rs` | check oparty na grepie |
+| `emit` tylko w `app/**/events.rs` | check oparty na grepie |
 | żadnych głębokich importów między slice'ami | check szukający `crate::<a>::<layer>::` z innego slice'a |
-| żadnych `static` ze stanem w `core` | check oparty na grepie szukający `static .*(Mutex|RwLock)` |
+| żadnych `static` ze stanem w `core` | check oparty na grepie szukający `static` z `Mutex`, `RwLock` albo typem atomowym |
+| żadnej blokady wewnątrz aktora | check oparty na grepie: żadnego `Mutex` ani `RwLock` pod `actor/` |
 | `logic.rs` i `update.rs` nie mają I/O | check: żadnego `async`, `tokio::`, `std::fs`, `store::`, `drivers::` w `logic.rs`, `logic/` i `update.rs` |
 | `mod.rs` slice'a zawiera tylko `mod …;` i `pub use …;` | check każdego `mod.rs` pod `core/src/` |
 | żadnych cykli między slice'ami | check, który buduje graf slice'ów z importów i go sortuje |
-| komenda Tauri ma najwyżej 10 linii | check na `app/*/commands.rs` |
-| żadnego `unwrap()` ani `panic!` poza testami w `core`, `store`, `drivers` | linty Clippy `unwrap_used` i `panic` (16.5) |
+| komenda Tauri ma najwyżej 10 linii | check na `app/**/commands.rs` |
+| żadnego `unwrap()` ani `panic!` poza testami w `kit`, `store`, `drivers`, `core` | linty Clippy `unwrap_used` i `panic` (16.5) |
 | system operacyjny tylko w `drivers/src/platform/` i `app/src/platform.rs` | check oparty na grepie z listą z 12.3 |
 | crate'y inne niż `app` kompilują się na każdą platformę | `cargo check` na runnerach CI z Ubuntu i Windows |
 | limity rozmiaru | check z listą bazową, która może się tylko skracać |
@@ -1069,7 +1228,7 @@ set -euo pipefail
 
 baseline="checks/baselines/emit.txt"
 found="$(grep -rln --include='*.rs' -E '\.emit(_to)?\(' crates src-tauri/src \
-  | grep -vE '^src-tauri/src/[a-z_]+/events\.rs$' | sort || true)"
+  | grep -vE '^src-tauri/src/([a-z_]+/)+events\.rs$' | sort || true)"
 
 new="$(comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
 fixed="$(comm -13 <(printf '%s\n' "$found" | sed '/^$/d') <(sort "$baseline"))"
@@ -1115,29 +1274,48 @@ W prawdziwym repozytorium przypnij wersje akcji do pełnych hashy commitów. Job
 
 | Check | Reguła |
 |---|---|
-| `checks/slat-commands.sh` | `#[tauri::command]` tylko w `src-tauri/src/*/commands.rs` |
+| `checks/slat-commands.sh` | `#[tauri::command]` tylko w `src-tauri/src/**/commands.rs` |
 | `checks/slat-registered.sh` | każda komenda w slice'ie występuje w `generate_handler!` |
-| `checks/slat-emit.sh` | `emit` tylko w `src-tauri/src/*/events.rs` |
+| `checks/slat-emit.sh` | `emit` tylko w `src-tauri/src/**/events.rs` |
+| `checks/slat-writer.sh` | `Connection::open` tylko w `crates/*-store` |
 | `checks/slat-deep-imports.sh` | żadnego `crate::<slice>::<layer>::` z innego slice'a |
-| `checks/slat-static-state.sh` | żadnego `static … Mutex|RwLock` w `crates/*-core*` |
+| `checks/slat-static-state.sh` | żadnego `static` z `Mutex`, `RwLock` albo typem atomowym w `crates/*-core*` |
+| `checks/slat-actor-lock.sh` | żadnego `Mutex` ani `RwLock` pod `actor/` |
 | `checks/slat-pure.sh` | `logic.rs`, `logic/` i `update.rs` bez `async`, `tokio::`, `std::fs`, `store::`, `drivers::` |
 | `checks/slat-slice-mod.sh` | `mod.rs` slice'a zawiera tylko `mod …;` i `pub use …;` |
+| `checks/slat-edges.sh` | wypisuje graf slice'ów, jedno `<slice> <imported slice>` na linię |
 | `checks/slat-slice-cycles.sh` | żadnych cykli między slice'ami |
 | `checks/slat-command-size.sh` | każda `#[tauri::command]` ma najwyżej 10 linii |
 | `checks/slat-platform.sh` | zakazy z 12.3 poza `platform/` |
 | `checks/slat-size.sh` | pliki powyżej 1500 linii z listy bazowej mogą się tylko zmniejszać |
 
-Check cykli nie potrzebuje biblioteki do grafów. Każde `use crate::<other>` wewnątrz `core/src/<slice>/` to krawędź, a `tsort` zgłasza graf z pętlą na swoim wyjściu błędów:
+Check cykli nie potrzebuje biblioteki do grafów. `checks/slat-edges.sh` wypisuje graf slice'ów: każde `crate::<other>` wewnątrz `core/src/<slice>/` to krawędź, także w importach grupowych, takich jak `use crate::{run::Run, plan::Plan};`, również gdy zajmują kilka linii. Zagnieżdżona grupa (`crate::{run::{Run, Step}, plan}`) gubi nazwy po swojej wewnętrznej grupie; w tym miejscu przejmuje reguła `ast-grep` (16.5).
+
+`checks/slat-edges.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-core="crates/quayside-core/src"
-edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
-  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
-  | awk '$1 != $2 && NF == 2' | sort -u)"
+core="${1:-crates/quayside-core/src}"
+find "$core" -mindepth 2 -name '*.rs' | sort | while read -r file; do
+  slice="${file#"$core"/}"
+  slice="${slice%%/*}"
+  { tr '\n' ' ' < "$file" \
+    | grep -oE 'crate::(\{[^}]*\}|[a-z_]+)' \
+    | grep -oE '(crate::|[{,] *)[a-z_]+' \
+    | sed -E 's/^(crate::|[{,] *)//' \
+    | sed "s/^/$slice /"; } || true
+done | awk '$1 != $2' | sort -u
+```
 
+`tsort` zgłasza graf z pętlą na swoim wyjściu błędów. `checks/slat-slice-cycles.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+edges="$(checks/slat-edges.sh crates/quayside-core/src)"
 loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
 if [ -n "$loops" ]; then
   printf '%s\n' "$loops"
@@ -1166,7 +1344,7 @@ panic = "deny"
 workspace = true
 ```
 
-Pierwszy blok trafia do korzenia workspace'u, drugi do `kit`, `store`, `drivers` i `core`. Crate `app` ich nie dziedziczy. `clippy.toml` w korzeniu workspace'u z `allow-unwrap-in-tests = true` i `allow-panic-in-tests = true` utrzymuje czytelność testów. `clippy.toml` w folderze crate'a zastępuje ten z korzenia, więc powtarza te dwie linie. `clippy.toml` w `core` może wymienić `disallowed-methods` i `disallowed-types`, na przykład `std::process::Command` i `std::sync::Mutex`, żeby proces uruchomiony ze slice'a albo blokada wewnątrz aktora były błędem lintera, a nie dopasowaniem grepa.
+Pierwszy blok trafia do korzenia workspace'u, drugi do `kit`, `store`, `drivers` i `core`. Crate `app` ich nie dziedziczy. `clippy.toml` w korzeniu workspace'u z `allow-unwrap-in-tests = true` i `allow-panic-in-tests = true` utrzymuje czytelność testów. `clippy.toml` w folderze crate'a zastępuje ten z korzenia, więc powtarza te dwie linie. `clippy.toml` w `core` może wymienić `disallowed-types`, na przykład `std::process::Command`, żeby proces uruchomiony ze slice'a był błędem lintera, a nie dopasowaniem grepa. Nie wpisuj tam `std::sync::Mutex`: cache należący do serwisu slice'a (9.1) potrzebuje krótkiej blokady, nigdy nie trzymanej przez `await`. Blokadę, która nie może istnieć, czyli tę wewnątrz aktora (9.3), łapie `checks/slat-actor-lock.sh`.
 
 **`cargo-deny`, dla całego grafu zależności.** `Cargo.toml` zatrzymuje `use tauri::…` w `core`, ale nie bibliotekę, która wciąga `tauri` tylnymi drzwiami. Takiego wycieku nie widać w review, a przez niego testy `core` kompilują najcięższą część aplikacji. `cargo-deny` sprawdza cały graf. W `deny.toml`:
 
@@ -1247,6 +1425,8 @@ Czy to stan, który żyje w tle, a okno go obserwuje?     → core/<s>/actor/
 Czy użytkownik może to wyłączyć, a reszta dalej działa? → slice pluginu (sekcja 23)
 Czy w ogóle nie ma domeny (czas, ścieżki, id, pliki)?   → kit
 ```
+
+Pierwsze pytanie dotyczy samego wejścia: komendy, wysłania zdarzenia (emit), nasłuchu serwera MCP albo zdalnego huba. To, co takie wejście robi (parowanie, szyfrowanie, komunikaty niesione przez most, reguły zdalnej sesji), to domena i mieszka w slice'ie `core`, który wejście woła.
 
 ## 18. Praca z agentami kodującymi
 
@@ -1368,7 +1548,7 @@ Pomiar z kroku 1 migracji:
 
 ### 20.2. Objawy w kodzie
 
-Stan aplikacji, w skrócie:
+Stan aplikacji, 11 z jego 41 pól:
 
 ```rust
 pub struct AppState {
@@ -1383,7 +1563,6 @@ pub struct AppState {
     pub sync_in_flight: AtomicBool,
     pub companion: Mutex<Option<CompanionHub>>,
     pub model_prices: Mutex<Option<(Instant, PriceList)>>,
-    // … 30 more
 }
 ```
 
@@ -1610,7 +1789,7 @@ Najpierw zmierz. `cargo build --timings` zapisuje raport HTML z czasem kompilacj
 
 - **Crate biblioteczny jest kompilowany, a nie linkowany.** Linkuje się każdą binarkę, a przy uruchomieniu testów każdą binarkę testową.
 - **Każdy crate może mieć trzy rodzaje binarek testowych:** swoje testy jednostkowe, każdy plik leżący bezpośrednio w `tests/` (sekcja 14.1 zmniejsza to do jednej, `tests/it`) i swoje przykłady z dokumentacji. Od edycji 2024 przykłady z dokumentacji crate'a buduje się jako jedną binarkę. Crate bez przykładów w dokumentacji ustawia `doctest = false` pod `[lib]`.
-- **Testy poniżej `app` nigdy nie potrzebują Tauri.** Codzienna komenda to `cargo nextest run --workspace --exclude quayside`. Tylko testy end-to-end z sekcji 14 budują crate `app`.
+- **Testy poniżej `app` nigdy nie potrzebują Tauri.** Codzienna komenda to `cargo t` (22.3), która uruchamia każdy crate oprócz `quayside`. Tylko testy end-to-end z sekcji 14 budują crate `app`.
 - **Ciężka biblioteka natywna kosztuje więcej niż Tauri.** Źródła C i C++ kompilowane przez skrypty buildu oraz crate'y uczenia maszynowego zajmują większość czystego buildu i większość linkowania każdej binarki, która je zawiera. Sekcja 5.3 trzyma je z dala od testów `core`.
 - **Informacje debugowe to duża część czasu linkowania.** Większości z nich nikt nigdy nie czyta.
 
@@ -1669,7 +1848,7 @@ Cargo buduje zależność raz dla każdego odrębnego zestawu feature'ów, o kt�
 t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
 ```
 
-Wszyscy, łącznie z agentami i CI, uruchamiają `cargo t` dla całej suity, a każda węższa komenda testów to `cargo t` z dodanym filtrem (22.4). Komenda testów z inną listą pakietów albo feature'ów to drugi build.
+Wszyscy, łącznie z agentami i CI, uruchamiają `cargo t` dla całej suity, a każda węższa komenda testów to `cargo t` z dodanym filtrem (22.4). Komenda testów z inną listą pakietów albo feature'ów to drugi build. Workspace, który używa wyłącznie szwów na danych (14.2), usuwa tu `--features quayside-drivers/fake`, a także w skrypcie z 22.4: alias, który wymienia feature, którego nikt nie definiuje, kończy się błędem.
 
 ### 22.4. Uruchamiaj to, na co zmiana może wpłynąć
 
@@ -1944,7 +2123,7 @@ Hook napisany w module testu to druga implementacja traita hooka, więc hook jes
 | każdy manifest jest w `PLUGINS` | check, który porównuje foldery z `plugin.rs` z `app/src/plugins.rs`, jak `slat-registered.sh` |
 | baza działa z wszystkimi pluginami wyłączonymi | test z 23.8, w CI |
 
-Slice'y pluginów to foldery, które mają `plugin.rs`. Check korzysta z krawędzi checka cykli:
+Slice'y pluginów to foldery, które mają `plugin.rs`. Check korzysta z `checks/slat-edges.sh` z 16.4:
 
 ```bash
 #!/usr/bin/env bash
@@ -1953,9 +2132,7 @@ set -euo pipefail
 core="crates/quayside-core/src"
 plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
   | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
-edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
-  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
-  | awk '$1 != $2 && NF == 2' | sort -u)"
+edges="$(checks/slat-edges.sh "$core")"
 
 wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
   <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
@@ -1977,7 +2154,7 @@ Kod napisany przez kogoś innego i ładowany w czasie działania aplikacji jest 
 
 | Wersja | Data | Zmiany |
 |---|---|---|
-| 1.3 | 25 października 2026 | Sekcja 23, *Pluginy*, opcjonalna: kiedy funkcja jest pluginem, manifest w `plugin.rs`, slice'y bazowe, które nigdy nie importują slice'ów pluginów, trzy punkty rozszerzeń (słuchanie, odpowiedź na hook, własne wejście), hooki jako jedyny trait dozwolony z jedną implementacją, jeden build z wyborem w pliku czytanym przy starcie, `Result<…, PluginOff>` w `AppState`, granica z frontendem, plugin we własnym crate'cie, testy z wszystkimi pluginami wyłączonymi, zamiana istniejącego slice'a w plugin, `checks/slat-plugins.sh` i rozszerzenia z zewnątrz jako wejścia. Słownik: plugin, slice bazowy, hook. Drzewo decyzyjne (17.8) i sekcja do przewodnika dla kontrybutorów (18) wspominają o pluginach. Historia wersji przechodzi z sekcji 23 do sekcji 24; sekcje od 1 do 22 zachowują swoje numery. |
+| 1.3 | 25 października 2026 | Sekcja 23, *Pluginy*, opcjonalna: kiedy funkcja jest pluginem, manifest w `plugin.rs`, slice'y bazowe, które nigdy nie importują slice'ów pluginów, trzy punkty rozszerzeń (słuchanie, odpowiedź na hook, własne wejście), hooki jako jedyny trait dozwolony z jedną implementacją, jeden build z wyborem w pliku czytanym przy starcie, `Result<…, PluginOff>` w `AppState`, granica z frontendem, plugin we własnym crate'cie, testy z wszystkimi pluginami wyłączonymi, zamiana istniejącego slice'a w plugin, `checks/slat-plugins.sh` i rozszerzenia z zewnątrz jako wejścia. Słownik: plugin, slice bazowy, hook. Drzewo decyzyjne (17.8) i sekcja do przewodnika dla kontrybutorów (18) wspominają o pluginach. Historia wersji przechodzi z sekcji 23 do sekcji 24; sekcje od 1 do 22 zachowują swoje numery. Poprawki: codzienna komenda testów w 22.1 to `cargo t`; `unwrap()` i `panic!` są zakazane także w `kit` (13, 16); cache serwisu może trzymać krótką blokadę, a blokadę wewnątrz aktora łapie nowy check (16.4, 16.5); `kit::paths` wybiera starszą ścieżkę według tego, czy ona istnieje, a nie według systemu operacyjnego (12.4); nazwy plików przed blokami kodu zamiast komentarzy w ich środku; drzewo workspace'u w 5 to skrócony kształt; szwy na danych w tabeli testowania (9.5, 14); rozróżnienie *Command* i *komendy Tauri* (3); rozróżnienie wejścia i domeny za nim (17.8); błędy slice'a mapują się na `IpcError` w jego własnym `dto.rs` (6.2, 7.1, 13); `store` wydaje połączenia do odczytu, z checkiem (5, 16); checki obejmują sub-slice'y (16.1, 16.4); `checks/slat-edges.sh` widzi importy grupowe (16.4, 23.10); przykładowy aktor w 9.4 jest kompletny (`Deps`, `execute`, `Snapshot`, `mod.rs`, `Failed`) i wysyła snapshot tylko wtedy, gdy się zmienił; `StartRequest::new` zamiast `Default` (10); nowa podsekcja 14.5, test przez wejście. |
 | 1.2 | 25 października 2026 | Sekcja 22, *Czas buildu i testów*: gdzie idzie czas kompilacji, ustawienia buildu (w tym `strip = false` i optymalizowane zależności testów), jeden zestaw feature'ów, uruchamianie testów, na które zmiana może wpłynąć, osobny `target/` dla każdej kopii roboczej, startujący z klonu copy-on-write, CI z cache'em zapisywanym tylko z `main`, co sprawia, że build zaczyna od nowa, i czyszczenie `target/`. Ciężkie drivery natywne w crate'cie, od którego `core` nie zależy (5.3). Nowe podsekcje 14.3 (mutanty w diffie), 14.4 (testy własności dla `update`) i 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checki dla reguł, które ich nie miały: czystość `logic.rs`, `mod.rs` slice'a, cykle między slice'ami, komenda o 10 liniach, `unwrap()` i `panic!`. Szwy na danych zamiast feature'a `fake`. Poprawiony koszt crate'a (5.2, 5.3), `resolver = "3"` dla edycji 2024 (5.1), krok cache'u w jobie platform (16.3). Historia wersji przechodzi z sekcji 22 do sekcji 23; sekcje od 1 do 21 zachowują swoje numery. |
 | 1.1 | 25 października 2026 | Sekcja 12, *Platformy*: folder `platform/` w `drivers`, kontrakty platformy, zakazy poza `platform/`, reguły dla ścieżek, plików i tekstu, testy platformy, job kompilacji w CI na Linuksie i Windows, przepis na port. Uzupełnienia w tierach, egzekwowaniu, przepisach i drzewie decyzyjnym. |
 | 1.0 | 24 października 2026 | Pierwsza wersja: tiery, slice'y ze stałymi warstwami, reguły importów, przepływy danych, aktorzy, stan aplikacji jako korzeń kompozycji, błędy, testowanie, limity rozmiaru, egzekwowanie, przepisy i migracja. |
