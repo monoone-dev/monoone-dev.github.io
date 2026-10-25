@@ -9,12 +9,13 @@ const theme = useThemeMenu()
 
 const section = (id: string): NavigationMenuItem => ({
   label: t(`nav.${id}`),
-  to: { path: localePath('/'), hash: `#${id}` }
+  to: { path: localePath('/'), hash: `#${id}` },
+  exactHash: true
 })
 
 const links = computed<NavigationMenuItem[]>(() => [
   section('principles'),
-  section('projects'),
+  { label: t('nav.projects'), to: localePath('/projects') },
   { label: t('nav.blog'), to: localePath('/blog') },
   section('contact')
 ])

@@ -1,3 +1,12 @@
+export type ProjectLinkKey = 'download' | 'site' | 'docs' | 'github'
+
+export const linkIcons: Record<ProjectLinkKey, string> = {
+  download: 'i-lucide-download',
+  site: 'i-lucide-globe',
+  docs: 'i-lucide-book-open',
+  github: 'i-simple-icons-github'
+}
+
 export interface Project {
   key: string
   name: string
@@ -8,7 +17,8 @@ export interface Project {
   category: 'BusinessApplication' | 'DeveloperApplication'
   meta: string[]
   features: { key: string, icon: string }[]
-  links: { key: string, to: string, icon: string }[]
+  steps: { key: string, icon: string }[]
+  links: { key: ProjectLinkKey, to: string }[]
 }
 
 export const site = {
@@ -54,13 +64,15 @@ export const projects: Project[] = [
       { key: 'encrypted', icon: 'i-lucide-lock' },
       { key: 'ai', icon: 'i-lucide-sparkles' }
     ],
+    steps: [
+      { key: 'record', icon: 'i-lucide-mic' },
+      { key: 'transcribe', icon: 'i-lucide-audio-lines' },
+      { key: 'keep', icon: 'i-lucide-file-text' }
+    ],
     links: [
-      {
-        key: 'download',
-        to: 'https://github.com/monoone-dev/index-one-landing-page/releases/latest',
-        icon: 'i-lucide-download'
-      },
-      { key: 'site', to: 'https://index-one.io', icon: 'i-lucide-arrow-up-right' }
+      { key: 'download', to: 'https://github.com/monoone-dev/index-one-landing-page/releases/latest' },
+      { key: 'site', to: 'https://index-one.io' },
+      { key: 'github', to: 'https://github.com/monoone-dev/index-one-landing-page' }
     ]
   },
   {
@@ -80,17 +92,15 @@ export const projects: Project[] = [
       { key: 'context', icon: 'i-lucide-book-open' },
       { key: 'evidence', icon: 'i-lucide-receipt' }
     ],
+    steps: [
+      { key: 'define', icon: 'i-lucide-user-cog' },
+      { key: 'connect', icon: 'i-lucide-workflow' },
+      { key: 'run', icon: 'i-lucide-play' }
+    ],
     links: [
-      {
-        key: 'download',
-        to: 'https://github.com/monoone-dev/rig-one-landing-page/releases/latest',
-        icon: 'i-lucide-download'
-      },
-      {
-        key: 'site',
-        to: 'https://rig-one.io/',
-        icon: 'i-lucide-arrow-up-right'
-      }
+      { key: 'download', to: 'https://github.com/monoone-dev/rig-one-landing-page/releases/latest' },
+      { key: 'site', to: 'https://rig-one.io/' },
+      { key: 'github', to: 'https://github.com/monoone-dev/rig-one-landing-page' }
     ]
   },
   {
@@ -110,9 +120,19 @@ export const projects: Project[] = [
       { key: 'mcp', icon: 'i-lucide-plug' },
       { key: 'skills', icon: 'i-lucide-sparkles' }
     ],
+    steps: [
+      { key: 'install', icon: 'i-lucide-package' },
+      { key: 'theme', icon: 'i-lucide-palette' },
+      { key: 'build', icon: 'i-lucide-layout-template' }
+    ],
     links: [
-      { key: 'docs', to: 'https://monoone.dev/surface-one/', icon: 'i-lucide-book-open' },
-      { key: 'github', to: 'https://github.com/monoone-dev/surface-one', icon: 'i-lucide-arrow-up-right' }
+      { key: 'docs', to: 'https://monoone.dev/surface-one/' },
+      { key: 'github', to: 'https://github.com/monoone-dev/surface-one' }
     ]
   }
+]
+
+export const upcoming = [
+  { name: 'SomaOne', mark: 'SomaOneMark' },
+  { name: 'GoOne', mark: 'GoOneMark' }
 ]

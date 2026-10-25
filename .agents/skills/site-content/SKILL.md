@@ -16,8 +16,12 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 | Languages, default, browser detection | list in `shared/locales.ts`, `i18n` block in `nuxt.config.ts`, plural rules in `i18n/i18n.config.ts` |
 | SEO: title, description, Open Graph, structured data | `meta` keys in the locale files, `useSeoMeta` and the JSON-LD in `app/app.vue`, `category` per project in `app/data/site.ts` |
 | Sitemap and robots.txt | `server/routes/sitemap.xml.ts`, `server/routes/robots.txt.ts` (prerendered) |
-| Page layout (hero, principles, projects, contact) | `app/pages/index.vue` |
-| Project card | `app/components/ProjectShowcase.vue` |
+| Home page (hero, lineup, principles, project overview, upcoming, contact) | `app/pages/index.vue`; hero orbit `HeroOrbit.vue`, product strip `ProductLineup.vue` |
+| Projects page (full description, "who it's for", "how it works") | `app/pages/projects/index.vue`, card `app/components/ProjectShowcase.vue` |
+| Short project card on the home page | `app/components/ProjectCard.vue` |
+| Project links (icon buttons with tooltips) | `app/components/ProjectLinks.vue`; one icon per link kind in `linkIcons`, labels under `projects.links` |
+| Upcoming products (icon and name only, no description) | `upcoming` in `app/data/site.ts`, `app/components/UpcomingProducts.vue` |
+| Product icon by name | `app/components/ProductMark.vue` maps `mark` to the `*Mark.vue` component |
 | MonoOne mark (theme-aware SVG) | `app/components/MonoMark.vue`, colors in `--mark-*` in `app/assets/scss/main.scss` |
 | IndexOne symbol | `app/components/IndexOneMark.vue`, source file in `app/assets/brand/` |
 | Mono theme (grayscale, black/white primary) | `app/assets/css/main.css`, `app/app.config.ts` |
@@ -58,9 +62,17 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 
 1. Append an entry to `projects` in `app/data/site.ts` (`key` is its translation namespace, `repo`
    the public repo whose stars are shown) and add that namespace to every locale file.
-2. Add its logo as a component next to `IndexOneMark.vue`: inline the official SVG, prefix every
-   gradient/filter id with `useId()` so two copies on a page do not collide.
-3. With two or more projects, check the Projects section layout and the hero button target.
+   Give it `steps` (three "how it works" steps) and `links` (`download`, `site`, `docs`, `github`).
+2. Add its logo as a component next to `IndexOneMark.vue`: inline the official SVG from the product's
+   own repository (never draw one), prefix every gradient/filter id with `useId()` so two copies on a
+   page do not collide, and register it in `ProductMark.vue`.
+3. Check the home cards, the hero orbit (five positions) and the Projects page.
+
+## Upcoming product
+
+Add `{ name, mark }` to `upcoming` in `app/data/site.ts` and its official icon as above. Show only
+the icon and the name. Drop the SVG's `<title>`, `<desc>` and comments, and rename ids that hint at
+what the product is: the repository is public.
 
 ## Blog post
 

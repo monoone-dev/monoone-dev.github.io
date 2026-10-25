@@ -53,21 +53,43 @@
   },
   "projects": {
     "title": "项目",
-    "description": "两款专注的产品，认真打磨。其余的等做好再说。",
-    "star": "星标 · {n}"
+    "description": "三款专注的产品，用心打造。更多产品准备好后推出。",
+    "star": "星标 · {n}",
+    "more": "详情",
+    "all": "查看全部项目详情",
+    "audience": "适合谁：",
+    "howItWorks": "工作方式",
+    "page": {
+      "eyebrow": "MonoOne · 项目",
+      "title": "项目",
+      "description": "我们目前发布的全部产品：每款产品做什么、适合谁、如何工作。全部免费。"
+    },
+    "links": {
+      "download": "下载 Mac 版",
+      "site": "网站",
+      "docs": "文档",
+      "github": "GitHub"
+    }
+  },
+  "lineup": {
+    "label": "产品",
+    "available": "已发布",
+    "soon": "即将推出"
+  },
+  "upcoming": {
+    "headline": "接下来",
+    "title": "开发中",
+    "description": "还有两款产品正在路上。准备好后再详细介绍。"
   },
   "indexOne": {
     "status": "抢先体验期间免费",
     "tagline": "安全、100% 本地的 macOS 会议笔记。",
     "description": "IndexOne 会录制你的通话、进行转写，并生成一份归你所有的结构化纯 Markdown 笔记，一切都在你的 Mac 上完成。录音、转写稿和笔记 100% 保留在你的设备上：无需账户，也不在云端处理。你的资料库存放在加密数据库中，除非你明确选择，否则不会向任何地方发送任何内容。",
+    "audience": "整天开会、希望拥有自己的笔记，又不想把音频发到云端的人。",
     "meta": {
       "macos": "macOS 13.4+",
       "arch": "Apple Silicon 和 Intel",
       "noAccount": "无需账户"
-    },
-    "links": {
-      "download": "下载 Mac 版",
-      "site": "index-one.io"
     },
     "features": {
       "bothSides": {
@@ -94,6 +116,20 @@
         "title": "你的 AI，你做主",
         "description": "使用设备端模型，或主动选择云端模型。还有一个本地 MCP 服务器，供你自己的智能体使用。"
       }
+    },
+    "steps": {
+      "record": {
+        "title": "录音",
+        "description": "开始录音。IndexOne 会听到你的麦克风和通话的另一方。"
+      },
+      "transcribe": {
+        "title": "转写",
+        "description": "设备端 Whisper 在你的 Mac 上把通话转成“我 / 其他人”转写稿。"
+      },
+      "keep": {
+        "title": "保存并提问",
+        "description": "结构化的 Markdown 笔记存入你的 vault，之后可以跨所有会议提问。"
+      }
     }
   },
   "stage": {
@@ -104,14 +140,11 @@
     "status": "免费",
     "tagline": "面向编程智能体的原生 macOS 控制室。",
     "description": "RigOne 把一排编程智能体变成一张看得见的图。智能体定义一次，放到画布上，连好步骤，再对着你 Mac 上的一个文件夹运行这张图。Claude Code 与 Codex 平起平坐，互不依赖的分支真的同时跑，而一次运行留下的证据比它所在的终端活得更久。",
+    "audience": "同时使用多个编程智能体、想要看清并复用工作过程的开发者。",
     "meta": {
       "macos": "macOS 13+",
       "silicon": "Apple Silicon",
       "ownCli": "用你自己的智能体 CLI"
-    },
-    "links": {
-      "download": "下载 Mac 版",
-      "site": "了解更多"
     },
     "features": {
       "canvas": {
@@ -138,20 +171,31 @@
         "title": "留得住的证据",
         "description": "回执、交接与诊断，在输出消失之后依然还在。"
       }
+    },
+    "steps": {
+      "define": {
+        "title": "定义智能体",
+        "description": "为每个智能体设定一次角色、模型和文件访问权限。"
+      },
+      "connect": {
+        "title": "连接步骤",
+        "description": "在画布上放置智能体、检查和命令，并把它们连成一张图。"
+      },
+      "run": {
+        "title": "运行并观察",
+        "description": "在项目上运行这张图，在一个屏幕上跟踪每个智能体。"
+      }
     }
   },
   "surfaceOne": {
     "status": "免费",
     "tagline": "面向 Angular 和 Vue 的设计系统与组件库。",
     "description": "SurfaceOne 是任何应用都能使用的设计系统和组件库。设计令牌和皮肤是纯 CSS，在其之上是 Angular 与 Vue / Nuxt 组件，React 也计划基于同一套令牌推出。70 多个组件，从表单、浮层到图表、关系图和录制控件。",
+    "audience": "使用 Angular 或 Vue 构建应用、想要统一外观又不想从零编写设计系统的团队。",
     "meta": {
       "frameworks": "Angular · Vue · Nuxt",
       "themes": "浅色与深色",
       "languages": "9 种语言的文档"
-    },
-    "links": {
-      "docs": "文档",
-      "github": "GitHub"
     },
     "features": {
       "tokens": {
@@ -177,6 +221,20 @@
       "skills": {
         "title": "智能体技能",
         "description": "一条命令即可为 Claude、Codex 和 Copilot 安装 SurfaceOne 技能。"
+      }
+    },
+    "steps": {
+      "install": {
+        "title": "安装",
+        "description": "添加 tokens 包以及 Angular 或 Vue 组件。"
+      },
+      "theme": {
+        "title": "选择外观",
+        "description": "选择一种皮肤和强调色，支持浅色和深色。"
+      },
+      "build": {
+        "title": "构建",
+        "description": "在整个应用中使用相同的组件和 tokens，文档见 Storybook。"
       }
     }
   },

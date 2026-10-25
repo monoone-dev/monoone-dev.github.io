@@ -9,7 +9,7 @@ const { data: stats } = useGithubStats()
   <Transition name="fade">
     <div
       v-if="stats"
-      class="flex flex-wrap items-center justify-center gap-2 font-mono text-xs"
+      class="flex flex-wrap items-center gap-2 font-mono text-xs"
     >
       <UButton
         :to="site.github"
