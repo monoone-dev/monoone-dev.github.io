@@ -7,7 +7,7 @@ export default defineEventHandler((event) => {
   const href = (code: string, page: string) =>
     `${code === defaultLocale ? root : `${root}${code}/`}${page}`
 
-  const pages = ['', 'blog/', ...posts.flatMap(postPages)]
+  const pages = ['', 'projects/', 'blog/', ...posts.flatMap(postPages)]
 
   const urls = pages.flatMap((page) => {
     const alternates = [

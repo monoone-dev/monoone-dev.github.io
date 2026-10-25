@@ -83,67 +83,173 @@ $ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   }
 }
 
-.hero-family {
+.hero-orbit {
   position: relative;
-  width: min(100%, 400px);
-  aspect-ratio: 400 / 264;
+  width: min(100%, 460px);
+  aspect-ratio: 1;
   margin-inline: auto;
 }
 
-.hero-family__board {
+.hero-orbit__rings {
   position: absolute;
   inset: 0;
   overflow: visible;
-  color: var(--ui-text-highlighted);
 }
 
-.hero-family__plane {
-  fill: var(--ui-bg);
+.hero-orbit__ring {
+  fill: none;
   stroke: var(--ui-border-accented);
-  stroke-width: 1;
-  stroke-linejoin: round;
+  stroke-width: 0.3;
 
-  &--under {
-    fill: var(--ui-bg-elevated);
+  &--faint {
     stroke: var(--ui-border);
+    fill: color-mix(in oklab, var(--ui-bg-elevated) 45%, transparent);
+  }
+
+  &--dashed {
+    stroke-dasharray: 0.6 1.4;
+    stroke-linecap: round;
+    transform-box: fill-box;
+    transform-origin: center;
   }
 }
 
-.hero-family__dot {
-  fill: var(--ui-border-accented);
-}
-
-.hero-family__wire {
-  fill: none;
-  stroke: var(--ui-text-dimmed);
-  stroke-width: 1.2;
-  stroke-dasharray: 3 5;
-  stroke-linecap: round;
-}
-
-.hero-family__hub {
-  fill: var(--ui-text-highlighted);
-}
-
-.hero-family__mono {
+.hero-orbit__core {
   position: absolute;
   left: 50%;
-  top: calc(90 / 264 * 100%);
-  width: 26%;
+  top: 50%;
+  width: 30%;
   aspect-ratio: 1;
   translate: -50% -50%;
 }
 
-.hero-family__node {
+.hero-orbit__node {
   position: absolute;
-  width: 18%;
+  width: 19%;
   aspect-ratio: 1;
   translate: -50% -50%;
+
+  &--soon .hero-orbit__tile {
+    opacity: 0.92;
+  }
 }
 
-.hero-family__tile {
+.hero-orbit__tile {
   width: 100%;
   height: 100%;
+}
+
+.section-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-text-dimmed);
+}
+
+.lineup-item {
+  transition:
+    border-color 0.3s,
+    background-color 0.3s;
+
+  &:hover {
+    border-color: var(--ui-border-accented);
+    background: var(--ui-bg-elevated);
+  }
+}
+
+.lineup-item__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px color-mix(in oklab, #22c55e 20%, transparent);
+
+  &--soon {
+    background: var(--ui-text-dimmed);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ui-text-dimmed) 20%, transparent);
+  }
+}
+
+.showcase__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 10%;
+    border-radius: 999px;
+    background: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--accent-from, var(--ui-text-dimmed)) 22%, transparent),
+      transparent 70%
+    );
+    filter: blur(24px);
+  }
+
+  > * {
+    position: relative;
+  }
+}
+
+.upcoming__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--ui-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ui-border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse at center 40%, #000 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at center 40%, #000 10%, transparent 70%);
+  opacity: 0.7;
+}
+
+.upcoming__redaction {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ui-bg-accented);
+}
+
+.contact-panel {
+  background: var(--ui-bg-inverted);
+  color: var(--ui-bg);
+}
+
+.contact-panel__muted {
+  color: color-mix(in oklab, var(--ui-bg) 65%, transparent);
+}
+
+.contact-panel__dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--ui-bg) 22%, transparent) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at center, #000 10%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 10%, transparent 75%);
+}
+
+.contact-panel__primary {
+  background: var(--ui-bg);
+  color: var(--ui-text-highlighted);
+
+  &:hover {
+    background: var(--ui-bg-elevated);
+  }
+}
+
+.contact-panel__secondary {
+  background: transparent;
+  color: var(--ui-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-bg) 30%, transparent);
+
+  &:hover {
+    background: color-mix(in oklab, var(--ui-bg) 10%, transparent);
+  }
 }
 
 .stage-badge {
@@ -192,22 +298,27 @@ $ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   }
 }
 
-@keyframes wire {
+@keyframes orbit {
   to {
-    stroke-dashoffset: -16;
+    transform: rotate(360deg);
   }
 }
 
-@keyframes breathe {
+@keyframes shimmer {
   50% {
-    transform: scale(0.85);
-    opacity: 0.7;
+    opacity: 0.45;
   }
 }
 
 @keyframes nudge {
   50% {
     transform: translateY(3px);
+  }
+}
+
+@keyframes nudge-x {
+  50% {
+    transform: translateX(3px);
   }
 }
 
@@ -239,18 +350,48 @@ $ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     }
   }
 
-  .hero-family__wire {
-    animation: wire 1.6s linear infinite;
+  .hero-orbit__ring--dashed {
+    animation: orbit 80s linear infinite;
   }
 
-  .hero-family__tile > svg {
+  .hero-orbit__tile > svg {
     animation: float 5s ease-in-out calc(var(--enter-delay) + 0.8s) infinite;
   }
 
-  .hero-family__shadow {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: breathe 6s ease-in-out 1.3s infinite;
+  .hero-orbit__tile {
+    transition: transform 0.4s $ease-out;
+
+    &:hover {
+      transform: scale(1.08);
+    }
+  }
+
+  .upcoming__redaction {
+    animation: shimmer 2.8s ease-in-out var(--shimmer-delay) infinite;
+  }
+
+  .upcoming__icon {
+    transition: transform 0.6s $ease-out;
+  }
+
+  .upcoming:hover .upcoming__icon {
+    transform: translateY(-6px) rotate(2deg);
+  }
+
+  .lineup-item__icon {
+    transition: transform 0.4s $ease-out;
+  }
+
+  .lineup-item:hover .lineup-item__icon {
+    transform: translateY(-2px) rotate(-3deg);
+  }
+
+  .principle__icon {
+    transition: transform 0.4s $ease-out;
+  }
+
+  .principle:hover .principle__icon {
+    transform: rotate(-6deg);
   }
 
   a:hover .mono-mark__half {
@@ -269,6 +410,29 @@ $ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   .nudge:hover .iconify {
     animation: nudge 0.9s ease-in-out infinite;
+  }
+
+  .nudge-x:hover .iconify {
+    animation: nudge-x 0.9s ease-in-out infinite;
+  }
+
+  .project-card {
+    transition:
+      border-color 0.3s,
+      transform 0.5s $ease-out;
+
+    &:hover {
+      border-color: var(--ui-border-accented);
+      transform: translateY(-4px);
+    }
+  }
+
+  .project-card__icon {
+    transition: transform 0.6s $ease-out;
+  }
+
+  .project-card:hover .project-card__icon {
+    transform: rotate(-4deg) scale(1.05);
   }
 
   .reveal {

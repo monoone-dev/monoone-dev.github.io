@@ -53,21 +53,43 @@
   },
   "projects": {
     "title": "Projekte",
-    "description": "Zwei fokussierte Produkte, sorgfältig gebaut. Mehr, wenn sie fertig sind.",
-    "star": "Stern · {n}"
+    "description": "Drei fokussierte Produkte, sorgfältig gebaut. Weitere, wenn sie fertig sind.",
+    "star": "Stern · {n}",
+    "more": "Details",
+    "all": "Alle Projektdetails",
+    "audience": "Für wen:",
+    "howItWorks": "So funktioniert es",
+    "page": {
+      "eyebrow": "MonoOne · Projekte",
+      "title": "Projekte",
+      "description": "Alles, was wir heute anbieten: was jedes Produkt tut, für wen es ist und wie es funktioniert. Alles kostenlos."
+    },
+    "links": {
+      "download": "Für Mac laden",
+      "site": "Website",
+      "docs": "Dokumentation",
+      "github": "GitHub"
+    }
+  },
+  "lineup": {
+    "label": "Produkte",
+    "available": "Verfügbar",
+    "soon": "Demnächst"
+  },
+  "upcoming": {
+    "headline": "Als Nächstes",
+    "title": "In Arbeit",
+    "description": "Zwei weitere Produkte sind unterwegs. Mehr dazu, wenn sie fertig sind."
   },
   "indexOne": {
     "status": "Kostenlos im Early Access",
     "tagline": "Sichere, 100 % lokale Meeting-Notizen für macOS.",
     "description": "IndexOne nimmt deine Calls auf, transkribiert sie und schreibt eine strukturierte Notiz in reinem Markdown, die dir gehört – alles auf deinem Mac. Aufnahmen, Transkripte und Notizen bleiben zu 100 % auf deinem Gerät: kein Konto und keine Verarbeitung in der Cloud. Deine Bibliothek liegt in einer verschlüsselten Datenbank, und nichts wird irgendwohin gesendet, außer du entscheidest dich ausdrücklich dafür.",
+    "audience": "Menschen, die den Tag in Calls verbringen und eigene Notizen wollen, ohne Audio in eine Cloud zu schicken.",
     "meta": {
       "macos": "macOS 13.4+",
       "arch": "Apple Silicon und Intel",
       "noAccount": "Kein Konto nötig"
-    },
-    "links": {
-      "download": "Für Mac laden",
-      "site": "index-one.io"
     },
     "features": {
       "bothSides": {
@@ -94,6 +116,20 @@
         "title": "Deine KI, deine Wahl",
         "description": "Modell auf dem Gerät oder optionale Cloud. Ein lokaler MCP-Server für deine eigenen Agenten."
       }
+    },
+    "steps": {
+      "record": {
+        "title": "Aufnehmen",
+        "description": "Starte eine Aufnahme. IndexOne hört dein Mikrofon und die andere Seite des Calls."
+      },
+      "transcribe": {
+        "title": "Transkribieren",
+        "description": "Whisper auf dem Gerät macht aus dem Call ein Ich / Andere-Transkript auf deinem Mac."
+      },
+      "keep": {
+        "title": "Behalten und fragen",
+        "description": "Eine strukturierte Markdown-Notiz landet in deinem Vault. Später fragst du über alle Meetings hinweg."
+      }
     }
   },
   "stage": {
@@ -104,14 +140,11 @@
     "status": "Kostenlos",
     "tagline": "Eine native macOS-Leitstelle für Coding-Agenten.",
     "description": "RigOne macht aus einer Reihe von Coding-Agenten einen Graphen, den man sieht. Beschreibe einen Agenten einmal, setz ihn auf die Leinwand, verbinde die Schritte und lass den Graphen auf einem Ordner auf deinem Mac laufen. Claude Code und Codex sind gleichberechtigt, unabhängige Zweige laufen wirklich gleichzeitig, und die Belege eines Laufs überleben das Terminal.",
+    "audience": "Entwickler, die mehrere Coding-Agenten einsetzen und sehen und wiederholen wollen, wie die Arbeit entsteht.",
     "meta": {
       "macos": "macOS 13+",
       "silicon": "Apple Silicon",
       "ownCli": "Deine eigene Agenten-CLI"
-    },
-    "links": {
-      "download": "Für Mac laden",
-      "site": "Mehr erfahren"
     },
     "features": {
       "canvas": {
@@ -138,20 +171,31 @@
         "title": "Belege, die bleiben",
         "description": "Belege, Übergaben und Diagnosen bleiben, wenn die Ausgabe weg ist."
       }
+    },
+    "steps": {
+      "define": {
+        "title": "Agenten festlegen",
+        "description": "Gib jedem Agenten einmal eine Rolle, ein Modell und seinen Dateizugriff."
+      },
+      "connect": {
+        "title": "Schritte verbinden",
+        "description": "Platziere Agenten, Checks und Befehle auf einer Leinwand und verbinde sie zu einem Graphen."
+      },
+      "run": {
+        "title": "Ausführen und verfolgen",
+        "description": "Führe den Graphen auf einem Projekt aus und verfolge jeden Agenten auf einem Bildschirm."
+      }
     }
   },
   "surfaceOne": {
     "status": "Kostenlos",
     "tagline": "Ein Designsystem und eine Komponentenbibliothek für Angular und Vue.",
     "description": "SurfaceOne ist ein Designsystem und eine Komponentenbibliothek, die jede App nutzen kann. Tokens und Skins sind reines CSS, darauf bauen Komponenten für Angular und Vue / Nuxt auf, und React ist auf denselben Tokens geplant. Über 70 Komponenten, von Formularen und Overlays bis zu Diagrammen, Graphen und Aufnahme-Steuerelementen.",
+    "audience": "Teams, die Angular- oder Vue-Apps bauen und ein einheitliches Aussehen wollen, ohne ein Designsystem von Grund auf zu schreiben.",
     "meta": {
       "frameworks": "Angular · Vue · Nuxt",
       "themes": "Hell und dunkel",
       "languages": "Doku in 9 Sprachen"
-    },
-    "links": {
-      "docs": "Dokumentation",
-      "github": "GitHub"
     },
     "features": {
       "tokens": {
@@ -177,6 +221,20 @@
       "skills": {
         "title": "Agent-Skills",
         "description": "Ein Befehl installiert die Surface-One-Skills für Claude, Codex und Copilot."
+      }
+    },
+    "steps": {
+      "install": {
+        "title": "Installieren",
+        "description": "Füge das Token-Paket und die Komponenten für Angular oder Vue hinzu."
+      },
+      "theme": {
+        "title": "Look wählen",
+        "description": "Wähle einen Skin und einen Akzent, hell und dunkel."
+      },
+      "build": {
+        "title": "Bauen",
+        "description": "Nutze dieselben Komponenten und Tokens in der ganzen App, dokumentiert in Storybook."
       }
     }
   },

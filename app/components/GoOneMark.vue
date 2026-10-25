@@ -1,0 +1,265 @@
+<script setup lang="ts">
+const id = useId()
+const paint = (name: string) => `url(#${id}-${name})`
+</script>
+
+<template>
+  <svg
+    viewBox="0 0 1024 1024"
+    class="block size-full overflow-visible"
+    role="img"
+    aria-label="GoOne"
+  >
+    <defs>
+      <linearGradient
+        :id="`${id}-tile`"
+        x1="180"
+        y1="100"
+        x2="846"
+        y2="906"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stop-color="#ffffff" />
+        <stop
+          offset=".54"
+          stop-color="#fbfdff"
+        />
+        <stop
+          offset="1"
+          stop-color="#eff5f8"
+        />
+      </linearGradient>
+      <linearGradient
+        :id="`${id}-left`"
+        x1="280"
+        y1="410"
+        x2="469"
+        y2="656"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stop-color="#72f2e3" />
+        <stop
+          offset=".32"
+          stop-color="#22cfc9"
+        />
+        <stop
+          offset=".7"
+          stop-color="#079cae"
+        />
+        <stop
+          offset="1"
+          stop-color="#056c91"
+        />
+      </linearGradient>
+      <linearGradient
+        :id="`${id}-center`"
+        x1="432"
+        y1="382"
+        x2="601"
+        y2="650"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stop-color="#0b657f" />
+        <stop
+          offset=".38"
+          stop-color="#058d9d"
+        />
+        <stop
+          offset=".74"
+          stop-color="#11bdb9"
+        />
+        <stop
+          offset="1"
+          stop-color="#54e7d5"
+        />
+      </linearGradient>
+      <linearGradient
+        :id="`${id}-right`"
+        x1="594"
+        y1="592"
+        x2="763"
+        y2="376"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stop-color="#21b7bb" />
+        <stop
+          offset=".4"
+          stop-color="#6ae1d8"
+        />
+        <stop
+          offset=".76"
+          stop-color="#a8f3e5"
+        />
+        <stop
+          offset="1"
+          stop-color="#e2fff3"
+        />
+      </linearGradient>
+      <linearGradient
+        :id="`${id}-crease`"
+        x1="418"
+        y1="0"
+        x2="445"
+        y2="0"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop
+          stop-color="#023d5d"
+          stop-opacity="0"
+        />
+        <stop
+          offset=".48"
+          stop-color="#024a63"
+          stop-opacity=".18"
+        />
+        <stop
+          offset=".5"
+          stop-color="#ddfff8"
+          stop-opacity=".48"
+        />
+        <stop
+          offset=".56"
+          stop-color="#ddfff8"
+          stop-opacity=".12"
+        />
+        <stop
+          offset="1"
+          stop-color="#ddfff8"
+          stop-opacity="0"
+        />
+      </linearGradient>
+      <filter
+        :id="`${id}-tile-shadow`"
+        x="-20%"
+        y="-18%"
+        width="140%"
+        height="148%"
+        color-interpolation-filters="sRGB"
+      >
+        <feDropShadow
+          dx="0"
+          dy="16"
+          stdDeviation="13"
+          flood-color="#52677b"
+          flood-opacity=".16"
+        />
+        <feDropShadow
+          dx="0"
+          dy="3"
+          stdDeviation="3"
+          flood-color="#52677b"
+          flood-opacity=".06"
+        />
+      </filter>
+      <filter
+        :id="`${id}-mark-shadow`"
+        x="-25%"
+        y="-20%"
+        width="150%"
+        height="150%"
+        color-interpolation-filters="sRGB"
+      >
+        <feDropShadow
+          dx="0"
+          dy="11"
+          stdDeviation="10"
+          flood-color="#00566d"
+          flood-opacity=".1"
+        />
+      </filter>
+      <clipPath :id="`${id}-mark-shape`">
+        <path d="M286 409 418 333Q432 325 447 333L592 411 721 335Q748 319 748 350V654Q748 670 734 678L607 750Q592 758 577 750L432 672 303 746Q276 762 276 731V428Q276 415 286 409Z" />
+      </clipPath>
+    </defs>
+
+    <g :filter="paint('tile-shadow')">
+      <rect
+        x="80"
+        y="64"
+        width="864"
+        height="864"
+        rx="220"
+        :fill="paint('tile')"
+      />
+      <rect
+        x="81"
+        y="65"
+        width="862"
+        height="862"
+        rx="219"
+        fill="none"
+        stroke="#ffffff"
+        stroke-opacity=".9"
+        stroke-width="2"
+      />
+    </g>
+
+    <g
+      transform="translate(0 -25)"
+      :filter="paint('mark-shadow')"
+    >
+      <g :clip-path="paint('mark-shape')">
+        <path
+          d="M276 410 432 325V672L276 762Z"
+          :fill="paint('left')"
+        />
+        <path
+          d="M432 325 592 411V758L432 672Z"
+          :fill="paint('center')"
+        />
+        <path
+          d="M592 411 748 319V670L592 758Z"
+          :fill="paint('right')"
+        />
+        <path
+          d="M418 325H445V680H418Z"
+          :fill="paint('crease')"
+        />
+        <path
+          d="M592 411V750"
+          fill="none"
+          stroke="#d4fff3"
+          stroke-opacity=".45"
+          stroke-width="1.4"
+        />
+        <path
+          d="M328 603 432 543 592 629 692 501"
+          fill="none"
+          stroke="#006d83"
+          stroke-opacity=".09"
+          stroke-width="16"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+        />
+        <path
+          d="M328 601 432 541 592 627 692 499"
+          fill="none"
+          stroke="#ffffff"
+          stroke-opacity=".96"
+          stroke-width="11"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+        />
+        <circle
+          cx="328"
+          cy="601"
+          r="13"
+          fill="#ffffff"
+        />
+        <circle
+          cx="692"
+          cy="499"
+          r="19"
+          fill="#ffffff"
+        />
+        <path
+          d="M286 409 418 333Q432 325 447 333L592 411 721 335"
+          fill="none"
+          stroke="#f0fff9"
+          stroke-opacity=".72"
+          stroke-width="1.5"
+        />
+      </g>
+    </g>
+  </svg>
+</template>

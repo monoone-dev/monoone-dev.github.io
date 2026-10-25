@@ -53,21 +53,43 @@
   },
   "projects": {
     "title": "プロジェクト",
-    "description": "丁寧に作った、的を絞った製品が二つ。続きは仕上がってから。",
-    "star": "スター · {n}"
+    "description": "丁寧につくった 3 つのプロダクト。続きは準備が整い次第。",
+    "star": "スター · {n}",
+    "more": "詳細",
+    "all": "すべてのプロジェクトの詳細",
+    "audience": "対象：",
+    "howItWorks": "使い方",
+    "page": {
+      "eyebrow": "MonoOne · プロジェクト",
+      "title": "プロジェクト",
+      "description": "現在提供しているすべてのプロダクト。それぞれの機能、対象、仕組みを紹介します。すべて無料です。"
+    },
+    "links": {
+      "download": "Mac 版をダウンロード",
+      "site": "ウェブサイト",
+      "docs": "ドキュメント",
+      "github": "GitHub"
+    }
+  },
+  "lineup": {
+    "label": "プロダクト",
+    "available": "提供中",
+    "soon": "近日公開"
+  },
+  "upcoming": {
+    "headline": "今後",
+    "title": "開発中",
+    "description": "さらに 2 つのプロダクトを準備中です。準備が整い次第お知らせします。"
   },
   "indexOne": {
     "status": "アーリーアクセス期間中は無料",
     "tagline": "安全で 100% ローカルな macOS 用会議ノート。",
     "description": "IndexOne は通話を録音して文字起こしし、あなたが所有するプレーンな Markdown の構造化ノートを作成します。すべてあなたの Mac 上で行われます。録音、文字起こし、ノートは 100% あなたのデバイスに留まります。アカウントは不要で、クラウドでの処理もありません。ライブラリは暗号化されたデータベースに保存され、あなたが明示的に選ばない限り、どこにも送信されません。",
+    "audience": "一日の多くを通話で過ごし、音声をクラウドに送らずに自分のノートを持ちたい人。",
     "meta": {
       "macos": "macOS 13.4+",
       "arch": "Apple Silicon と Intel",
       "noAccount": "アカウント不要"
-    },
-    "links": {
-      "download": "Mac 版をダウンロード",
-      "site": "index-one.io"
     },
     "features": {
       "bothSides": {
@@ -94,6 +116,20 @@
         "title": "AI は自由に選択",
         "description": "オンデバイスのモデルか、オプトインのクラウドを選べます。自分のエージェント向けのローカル MCP サーバーも用意しています。"
       }
+    },
+    "steps": {
+      "record": {
+        "title": "録音する",
+        "description": "録音を開始します。IndexOne はあなたのマイクと通話相手の音声を聞き取ります。"
+      },
+      "transcribe": {
+        "title": "文字起こしする",
+        "description": "デバイス上の Whisper が通話を Mac 上で「自分 / 相手」の文字起こしにします。"
+      },
+      "keep": {
+        "title": "保存して質問する",
+        "description": "構造化された Markdown ノートが vault に保存され、あとからすべての会議に質問できます。"
+      }
     }
   },
   "stage": {
@@ -104,14 +140,11 @@
     "status": "無料",
     "tagline": "コーディングエージェントのための macOS ネイティブな管制室。",
     "description": "RigOne は並んだコーディングエージェントを、目に見える一枚のグラフに変えます。エージェントは一度定義するだけ。キャンバスに置き、ステップをつなぎ、Mac 上のフォルダに対してグラフを実行します。Claude Code と Codex は対等で、依存しない枝は本当に同時に走り、実行が残す証拠はターミナルより長く残ります。",
+    "audience": "複数のコーディングエージェントを使い、作業の進め方を見て再現したい開発者。",
     "meta": {
       "macos": "macOS 13+",
       "silicon": "Apple Silicon",
       "ownCli": "自分のエージェント CLI"
-    },
-    "links": {
-      "download": "Mac 版をダウンロード",
-      "site": "詳しく見る"
     },
     "features": {
       "canvas": {
@@ -138,20 +171,31 @@
         "title": "残り続ける証拠",
         "description": "記録、引き継ぎ、診断は出力が消えた後も残ります。"
       }
+    },
+    "steps": {
+      "define": {
+        "title": "エージェントを定義する",
+        "description": "各エージェントに役割、モデル、ファイルアクセスを一度だけ設定します。"
+      },
+      "connect": {
+        "title": "ステップをつなぐ",
+        "description": "エージェント、チェック、コマンドをキャンバスに置き、グラフとしてつなぎます。"
+      },
+      "run": {
+        "title": "実行して見守る",
+        "description": "プロジェクトに対してグラフを実行し、すべてのエージェントを一つの画面で追えます。"
+      }
     }
   },
   "surfaceOne": {
     "status": "無料",
     "tagline": "Angular と Vue のためのデザインシステムとコンポーネントライブラリ。",
     "description": "SurfaceOne は、どのアプリでも使えるデザインシステムとコンポーネントライブラリです。デザイントークンとスキンは素の CSS、その上に Angular と Vue / Nuxt のコンポーネント。同じトークンを使う React も予定しています。フォームやオーバーレイからチャート、グラフ、録音コントロールまで 70 以上のコンポーネント。",
+    "audience": "Angular や Vue でアプリを作り、デザインシステムを一から書かずに統一した見た目を求めるチーム。",
     "meta": {
       "frameworks": "Angular · Vue · Nuxt",
       "themes": "ライトとダーク",
       "languages": "9 言語のドキュメント"
-    },
-    "links": {
-      "docs": "ドキュメント",
-      "github": "GitHub"
     },
     "features": {
       "tokens": {
@@ -177,6 +221,20 @@
       "skills": {
         "title": "エージェントスキル",
         "description": "1 つのコマンドで Claude、Codex、Copilot 向けの SurfaceOne スキルを導入。"
+      }
+    },
+    "steps": {
+      "install": {
+        "title": "インストールする",
+        "description": "トークンパッケージと Angular または Vue のコンポーネントを追加します。"
+      },
+      "theme": {
+        "title": "見た目を選ぶ",
+        "description": "スキンとアクセントを、ライトとダークで選べます。"
+      },
+      "build": {
+        "title": "つくる",
+        "description": "アプリ全体で同じコンポーネントとトークンを使えます。ドキュメントは Storybook にあります。"
       }
     }
   },

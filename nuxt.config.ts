@@ -1,9 +1,9 @@
 import { locales } from './shared/locales'
 import { postPages, posts } from './shared/blog'
 
-const blogRoutes = locales.flatMap((l) => {
+const pageRoutes = locales.flatMap((l) => {
   const prefix = l.code === 'en' ? '' : `/${l.code}`
-  return ['blog/', ...posts.flatMap(postPages)].map(page => `${prefix}/${page.replace(/\/$/, '')}`)
+  return ['projects/', 'blog/', ...posts.flatMap(postPages)].map(page => `${prefix}/${page.replace(/\/$/, '')}`)
 })
 
 const base = (process.env.NUXT_APP_BASE_URL || '/').replace(/\/*$/, '/')
@@ -58,7 +58,7 @@ export default defineNuxtConfig({
 
   nitro: {
     prerender: {
-      routes: ['/', '/pl', '/es', '/it', '/fr', '/pt', '/de', '/zh', '/ja', ...blogRoutes, '/api/github', '/sitemap.xml', '/robots.txt']
+      routes: ['/', '/pl', '/es', '/it', '/fr', '/pt', '/de', '/zh', '/ja', ...pageRoutes, '/api/github', '/sitemap.xml', '/robots.txt']
     }
   },
 

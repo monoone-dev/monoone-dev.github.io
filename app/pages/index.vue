@@ -2,29 +2,33 @@
 import { principles, projects, site } from '~/data/site'
 
 const { t } = useI18n()
+const localePath = useLocalePath()
 </script>
 
 <template>
   <div>
     <UPageHero
       class="hero"
-      :ui="{ title: 'text-4xl sm:text-7xl text-balance wrap-break-word', description: 'text-balance' }"
+      orientation="horizontal"
+      :ui="{
+        container: 'lg:gap-12 py-16 sm:py-24 lg:py-32',
+        title: 'text-4xl sm:text-6xl xl:text-7xl text-balance wrap-break-word',
+        description: 'text-balance text-lg',
+        links: 'justify-start'
+      }"
     >
       <template #top>
         <HeroBackdrop />
       </template>
 
       <template #headline>
-        <div class="flex w-full flex-col items-center gap-8">
-          <HeroFamily class="enter" />
-          <UBadge
-            :label="t('hero.badge')"
-            color="neutral"
-            variant="outline"
-            class="enter rounded-full font-mono px-3"
-            style="--enter-delay: 120ms"
-          />
-        </div>
+        <UBadge
+          :label="t('hero.badge')"
+          color="neutral"
+          variant="outline"
+          class="enter rounded-full font-mono px-3"
+          style="--enter-delay: 120ms"
+        />
       </template>
 
       <template #title>
@@ -46,9 +50,9 @@ const { t } = useI18n()
       </template>
 
       <template #links>
-        <div class="flex w-full flex-col items-center gap-6">
+        <div class="flex w-full flex-col items-start gap-6">
           <div
-            class="enter flex flex-wrap justify-center gap-3"
+            class="enter flex flex-wrap gap-3"
             style="--enter-delay: 540ms"
           >
             <UButton
@@ -71,57 +75,121 @@ const { t } = useI18n()
           <GithubStats />
         </div>
       </template>
+
+      <HeroOrbit class="enter" />
     </UPageHero>
+
+    <UContainer class="relative pb-8">
+      <ProductLineup />
+    </UContainer>
 
     <UPageSection
       id="principles"
+      :headline="t('nav.principles')"
       :title="t('principles.title')"
       :description="t('principles.description')"
+      :ui="{ headline: 'section-eyebrow' }"
     >
-      <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+      <ul class="grid gap-px overflow-hidden rounded-3xl border border-default bg-(--ui-border) sm:grid-cols-2 lg:grid-cols-4">
         <Reveal
           v-for="(principle, i) in principles"
           :key="principle.key"
+          as="li"
           :delay="i * 90"
+          class="principle flex flex-col bg-default p-6 sm:p-8"
         >
-          <UPageFeature
-            :icon="principle.icon"
-            :title="t(`principles.items.${principle.key}.title`)"
-            :description="t(`principles.items.${principle.key}.description`)"
-          />
+          <div class="flex items-center justify-between">
+            <span class="principle__icon flex size-10 items-center justify-center rounded-xl border border-default bg-elevated">
+              <UIcon
+                :name="principle.icon"
+                class="size-5 text-highlighted"
+              />
+            </span>
+            <span class="mono-index text-xs">{{ String(i + 1).padStart(2, '0') }}</span>
+          </div>
+          <p class="mt-8 font-semibold text-highlighted">
+            {{ t(`principles.items.${principle.key}.title`) }}
+          </p>
+          <p class="mt-2 text-sm text-muted leading-relaxed">
+            {{ t(`principles.items.${principle.key}.description`) }}
+          </p>
         </Reveal>
-      </div>
+      </ul>
     </UPageSection>
-
-    <USeparator />
 
     <UPageSection
       id="projects"
+      :headline="t('nav.projects')"
       :title="t('projects.title')"
       :description="t('projects.description')"
+      :ui="{ headline: 'section-eyebrow' }"
     >
-      <Reveal>
-        <ProjectShowcase
+      <div class="grid gap-6 lg:grid-cols-3">
+        <Reveal
           v-for="(project, i) in projects"
           :key="project.name"
-          :project="project"
-          :index="i"
-          :class="i > 0 ? 'mt-10' : undefined"
+          :delay="i * 100"
+        >
+          <ProjectCard :project="project" />
+        </Reveal>
+      </div>
+      <div class="mt-10 flex justify-center">
+        <UButton
+          :label="t('projects.all')"
+          :to="localePath('/projects')"
+          trailing-icon="i-lucide-arrow-right"
+          color="neutral"
+          variant="outline"
+          size="lg"
+          class="nudge-x"
         />
-      </Reveal>
+      </div>
+    </UPageSection>
+
+    <UPageSection
+      id="upcoming"
+      :headline="t('upcoming.headline')"
+      :title="t('upcoming.title')"
+      :description="t('upcoming.description')"
+      :ui="{ headline: 'section-eyebrow' }"
+    >
+      <UpcomingProducts />
     </UPageSection>
 
     <UPageSection id="contact">
       <Reveal>
-        <UPageCTA
-          :title="t('contact.title')"
-          :description="t('contact.description')"
-          variant="subtle"
-          :links="[
-            { label: t('contact.issue'), to: site.issues, target: '_blank', icon: 'i-lucide-circle-dot' },
-            { label: t('contact.discussions'), to: site.discussions, target: '_blank', icon: 'i-lucide-messages-square', color: 'neutral', variant: 'outline' }
-          ]"
-        />
+        <div class="contact-panel relative overflow-hidden rounded-3xl px-6 py-14 text-center sm:px-16 sm:py-20">
+          <div
+            class="contact-panel__dots"
+            aria-hidden="true"
+          />
+          <div class="relative mx-auto max-w-2xl">
+            <h2 class="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+              {{ t('contact.title') }}
+            </h2>
+            <p class="contact-panel__muted mt-4 text-lg text-balance">
+              {{ t('contact.description') }}
+            </p>
+            <div class="mt-8 flex flex-wrap justify-center gap-3">
+              <UButton
+                :label="t('contact.issue')"
+                :to="site.issues"
+                target="_blank"
+                icon="i-lucide-circle-dot"
+                size="xl"
+                class="contact-panel__primary"
+              />
+              <UButton
+                :label="t('contact.discussions')"
+                :to="site.discussions"
+                target="_blank"
+                icon="i-lucide-messages-square"
+                size="xl"
+                class="contact-panel__secondary"
+              />
+            </div>
+          </div>
+        </div>
       </Reveal>
     </UPageSection>
   </div>
