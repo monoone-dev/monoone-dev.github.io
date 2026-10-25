@@ -6,10 +6,6 @@ import IndexOneMark from './IndexOneMark.vue'
 import RigOneMark from './RigOneMark.vue'
 import SurfaceOneMark from './SurfaceOneMark.vue'
 
-/* The symbol is picked by name from `site.ts`, but the components are imported HERE rather
-   than resolved from a string: Nuxt auto-imports what it can see statically, so
-   `<component :is="'RigOneMark'" />` compiles to nothing and the card loses its mark with no
-   error anywhere. Measured on this page before the second project shipped. */
 const marks: Record<string, Component> = { IndexOneMark, RigOneMark, SurfaceOneMark }
 
 const props = withDefaults(defineProps<{ project: Project, index?: number }>(), { index: 0 })
@@ -17,8 +13,6 @@ const props = withDefaults(defineProps<{ project: Project, index?: number }>(), 
 const { t } = useI18n()
 const k = (path: string) => t(`${props.project.key}.${path}`)
 
-// `IndexOne` → bold `Index` + light `One`. The house writes every product name this way,
-// so the split belongs here once rather than being spelled out per card.
 const word = computed(() => {
   const name = props.project.name
   return name.endsWith('One') ? { head: name.slice(0, -3), tail: 'One' } : { head: name, tail: '' }

@@ -1,7 +1,4 @@
 <script setup lang="ts">
-// IndexOne symbol, from app/assets/brand/index-one-light-symbol.svg.
-// Inlined so gradient ids can be made unique and the planes can animate.
-// `tile: false` drops the app-icon background and crops to the folded mark.
 const props = withDefaults(defineProps<{ tile?: boolean }>(), { tile: true })
 
 const id = useId()

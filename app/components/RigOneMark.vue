@@ -1,8 +1,4 @@
 <script setup lang="ts">
-// RigOne symbol, from app/assets/brand/rig-one-icon.svg.
-// Inlined so gradient ids can be made unique, exactly like IndexOneMark next to it.
-// Drawn on IndexOne's 1254 canvas with the same tile and shadow, so both cards match in size.
-// `tile: false` drops the white app-icon tile and crops to the folded ribbon.
 const props = withDefaults(defineProps<{ tile?: boolean }>(), { tile: true })
 
 const id = useId()
@@ -181,7 +177,6 @@ const viewBox = computed(() => (props.tile ? '0 0 1254 1254' : '306 250 635 692'
       :filter="paint('tile-shadow')"
     />
 
-    <!-- the 1024 source icon placed on IndexOne's tile (109,92 → 1143,1131) -->
     <g transform="translate(109 92) scale(1.0098) translate(-106 -86) scale(.98)">
       <path
         :fill="paint('upper')"

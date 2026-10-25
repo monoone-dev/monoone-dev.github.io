@@ -6,8 +6,6 @@ const modes = [
   { value: 'system', icon: 'i-lucide-monitor' }
 ] as const
 
-// Light / dark / system items shared by the theme button (desktop) and the mobile menu.
-// "System" (the default) follows the OS setting.
 export function useThemeMenu() {
   const colorMode = useColorMode()
   const { t } = useI18n()

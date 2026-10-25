@@ -1,7 +1,6 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { flags } from '~/data/site'
 
-// Language items shared by the flag button (desktop) and the mobile menu
 export function useLanguageMenu() {
   const { locale, locales, setLocale } = useI18n()
 

@@ -26,10 +26,8 @@ const github = computed<DropdownMenuItem>(() => ({
   target: '_blank'
 }))
 
-// Tablets: the links move into a menu, language/theme/GitHub stay in the bar
 const linksMenu = computed<DropdownMenuItem[][]>(() => [links.value as DropdownMenuItem[]])
 
-// Phones: one menu holds everything — links, language, theme and GitHub
 const mobileMenu = computed<DropdownMenuItem[][]>(() => [
   links.value as DropdownMenuItem[],
   [

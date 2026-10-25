@@ -11,15 +11,11 @@ export type PostPart =
   | { kind: 'html', html: string }
   | { kind: 'diagram', name: string }
 
-/** One page of an article: the intro (number 0) or one `##` section (1, 2, …). */
 export interface RenderedSection {
   number: number
-  /** Heading text without its number, e.g. "Platforms"; empty for the intro */
   title: string
-  /** First paragraph as plain text, for search engines and link previews */
   summary: string
   parts: PostPart[]
-  /** Every section of the article, with this page's subsections */
   toc: TocLink[]
   minutes: number
 }
@@ -37,8 +33,6 @@ const SECTION_NUMBER = /^\d+\.\s*/
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false })
 
-// Anchors follow the section numbers (s9, s9-4), not the heading text, so a link to a section
-// is the same in every language — including Chinese and Japanese, where a text slug would be empty.
 md.renderer.rules.heading_open = (tokens, idx, options, env: RenderEnv, self) => {
   const token = tokens[idx]!
   const text = (tokens[idx + 1]?.children ?? [])
@@ -60,7 +54,6 @@ md.renderer.rules.heading_open = (tokens, idx, options, env: RenderEnv, self) =>
   return self.renderToken(tokens, idx, options)
 }
 
-// Wide tables and code scroll inside their own box, never the page
 md.renderer.rules.table_open = () => '<div class="table-wrap"><table>\n'
 md.renderer.rules.table_close = () => '</table></div>\n'
 
@@ -73,7 +66,6 @@ function readingMinutes(source: string): number {
   return Math.max(1, Math.round(words / 220 + cjk / 500))
 }
 
-/** The intro, then one chunk per `##` heading. A `##` inside a code block does not start a section. */
 function splitSections(source: string): string[] {
   const chunks: string[][] = [[]]
   let inCode = false
@@ -109,7 +101,6 @@ const plain = (html: string) => html
   .replace(/\s+/g, ' ')
   .trim()
 
-// The first paragraph that says something: a one-line note such as "New in version 1.1." is skipped
 function firstParagraph(html: string, limit = 158): string {
   const paragraphs = [...html.matchAll(/<p>([\s\S]*?)<\/p>/g)].map(match => plain(match[1]!))
   const text = paragraphs.find(paragraph => paragraph.length >= 60) ?? paragraphs[0] ?? ''

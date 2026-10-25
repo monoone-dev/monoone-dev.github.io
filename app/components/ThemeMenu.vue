@@ -19,7 +19,6 @@ const { items, icon } = useThemeMenu()
       />
     </UDropdownMenu>
 
-    <!-- Same footprint while the stored preference is unknown on the server -->
     <template #fallback>
       <div class="size-8" />
     </template>

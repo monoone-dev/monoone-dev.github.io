@@ -1,6 +1,3 @@
-// Public GitHub numbers for the org: followers and stars per public repo.
-// Cached for an hour so visitors never hit GitHub's rate limit directly.
-// Set NUXT_GITHUB_TOKEN to raise the limit (the token needs no scopes).
 import type { GithubStats } from '#shared/types/github'
 
 interface GithubOrg { followers: number }

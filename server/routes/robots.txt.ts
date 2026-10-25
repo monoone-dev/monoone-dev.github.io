@@ -1,4 +1,3 @@
-// Everything is public; point crawlers at the sitemap. Prerendered like the sitemap.
 export default defineEventHandler((event) => {
   const { app, public: { i18n } } = useRuntimeConfig(event)
   const root = `${String(i18n.baseUrl).replace(/\/$/, '')}${app.baseURL}`

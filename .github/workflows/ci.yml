@@ -71,7 +71,6 @@ jobs:
 
       - run: pnpm build
 
-      # Same static build the Pages deploy runs, so a prerender failure shows up before merge
       - run: pnpm generate
         env:
           NITRO_PRESET: github_pages

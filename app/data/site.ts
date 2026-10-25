@@ -1,19 +1,10 @@
-// Structure of the page: links, icons and which translation keys to use.
-// All visible text lives in i18n/locales/<code>.json.
-
 export interface Project {
-  /** Translation namespace, e.g. `indexOne` → `indexOne.tagline` */
   key: string
   name: string
-  /** Component that draws the symbol, e.g. `IndexOneMark` */
   mark: string
-  /** Public repo whose stars are shown on the card */
   repo: string
-  /** Release stage shown next to the status badge, e.g. `alpha` → `stage.alpha` */
   stage?: 'alpha' | 'beta'
-  /** Two colors from the app's logo, used for the stage badge */
   accent?: [string, string]
-  /** schema.org `applicationCategory` for search engines (structured data in the page head) */
   category: 'BusinessApplication' | 'DeveloperApplication'
   meta: string[]
   features: { key: string, icon: string }[]
@@ -28,7 +19,6 @@ export const site = {
   discussions: 'https://github.com/monoone-dev/index-one-landing-page/discussions'
 }
 
-// Flag shown in the language picker (circle-flags icons: SVG, so they look the same on every OS)
 export const flags: Record<string, string> = {
   en: 'i-circle-flags-gb',
   pl: 'i-circle-flags-pl',
@@ -79,8 +69,6 @@ export const projects: Project[] = [
     mark: 'RigOneMark',
     stage: 'alpha',
     accent: ['#5826ff', '#9d48fb'],
-    // The application repository is private, so the public numbers and the build both live
-    // on the landing repository — the same arrangement IndexOne uses.
     repo: 'rig-one-landing-page',
     category: 'DeveloperApplication',
     meta: ['macos', 'silicon', 'ownCli'],

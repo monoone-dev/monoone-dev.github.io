@@ -4,7 +4,6 @@ import type { BlogPost } from '#shared/blog'
 const props = defineProps<{
   post: BlogPost
   toc: TocLink[]
-  /** 0 is the overview, 1… the sections */
   current: number
 }>()
 
@@ -16,7 +15,6 @@ let observer: IntersectionObserver | undefined
 
 const subsections = computed(() => props.toc[props.current - 1]?.children ?? [])
 
-// On a section page, the subsection whose heading last crossed the top fifth of the screen is the one being read
 onMounted(() => {
   const headings = subsections.value
     .map(link => document.getElementById(link.id))
