@@ -20,7 +20,6 @@ useSeoMeta({
   twitterDescription: () => t('blog.description')
 })
 
-// schema.org Blog with its posts, in the page's language
 const { app, public: { i18n } } = useRuntimeConfig()
 const absolute = (path: string) =>
   `${(i18n.baseUrl as string).replace(/\/$/, '')}${app.baseURL.replace(/\/$/, '')}${localePath(path).replace(/\/?$/, '/')}`

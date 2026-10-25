@@ -4,18 +4,13 @@ import { site } from '~/data/site'
 
 interface BlogPageSeo {
   post: BlogPost
-  /** The page's own title: the post title on the overview, the section title on a section */
   title: MaybeRefOrGetter<string>
   description: MaybeRefOrGetter<string>
-  /** Path of this page without the language prefix, e.g. `/blog/slat/platforms` */
   path: string
   section?: { number: MaybeRefOrGetter<number>, name: MaybeRefOrGetter<string> }
-  /** Overview only: every section, for `hasPart` */
   parts?: MaybeRefOrGetter<{ name: string, path: string }[]>
 }
 
-// Title, description, Open Graph and schema.org data for one blog page, in its language.
-// Canonical, hreflang alternates and og:url come from i18n (useLocaleHead in app.vue).
 export function useBlogSeo(page: BlogPageSeo) {
   const { t, locale } = useI18n()
   const localePath = useLocalePath()

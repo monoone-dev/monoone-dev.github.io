@@ -1,5 +1,3 @@
-// Polish has three plural forms (1 gwiazdka, 2–4 gwiazdki, 5+ gwiazdek), so its
-// messages carry four choices: zero | one | few | many. Other languages use zero | one | other.
 export default defineI18nConfig(() => ({
   fallbackLocale: 'en',
   pluralRules: {

@@ -19,6 +19,8 @@ Rules for every person and every coding agent working here:
   (`.github/CODEOWNERS`); repository admins may merge their own without one. Every merge to
   `main` deploys the site.
 - **Green before push.** `pnpm typecheck` and `pnpm build` pass locally (the `ci-maintenance` skill).
+- **No code comments.** Do not write comments in source files (`.ts`, `.vue`, `.scss`, configs,
+  workflows, hooks) or in code examples of blog posts. Name things so the code explains itself.
 - **No personal names** on the site, and **nothing private** in the repo: link public repositories
   and sites only (the `site-content` skill).
 

@@ -1,12 +1,10 @@
 import type { BlogPost } from '#shared/blog'
 import { defaultLocale } from '#shared/locales'
 
-// Each language is its own chunk, so a reader downloads only the article in their language
 const sources = import.meta.glob<string>('../../content/blog/*/*.md', { query: '?raw', import: 'default' })
 
 const sourceKey = (slug: string, code: string) => `../../content/blog/${slug}/${code}.md`
 
-/** One page of a post: 0 is the overview, 1… the sections in `post.sections` order. */
 export function useBlogSection(post: BlogPost, number: number) {
   const { locale } = useI18n()
 

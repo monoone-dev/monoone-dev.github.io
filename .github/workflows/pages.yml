@@ -4,14 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch: {}
-  # Daily rebuild so the GitHub stars/followers baked into the pages stay fresh
   schedule:
     - cron: "17 5 * * *"
 
 permissions:
   contents: read
 
-# One deploy at a time; never cancel a deploy that is already running
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -39,7 +37,6 @@ jobs:
       - run: pnpm generate
         env:
           NITRO_PRESET: github_pages
-          # "/<repo>/" on <org>.github.io, "/" once a custom domain is set
           NUXT_APP_BASE_URL: ${{ steps.pages.outputs.base_path }}/
           NUXT_PUBLIC_I18N_BASE_URL: ${{ steps.pages.outputs.origin }}
           NUXT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

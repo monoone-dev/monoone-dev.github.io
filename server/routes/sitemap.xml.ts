@@ -1,5 +1,3 @@
-// One <url> per page and language, each listing every other language as an hreflang alternate,
-// the same set the page head declares. Prerendered by `pnpm generate`, so it is a static file on Pages.
 import { defaultLocale, locales } from '#shared/locales'
 import { postPages, posts } from '#shared/blog'
 

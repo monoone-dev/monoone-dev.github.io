@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// MonoOne mark: two crossing ribbons. Ink on the left, paper on the right;
-// colors come from --mark-* tokens so the mark inverts in dark mode.
 const id = useId()
 
 const ribbonA = 'M0 11 Q0 0 9.76 5.07 L100 52 L100 89 Q100 100 90.24 94.93 L0 48 Z'

@@ -1,3 +1,2 @@
 #!/bin/sh
-# Conventional Commits + no AI attribution (commitlint.config.mjs)
 exec pnpm exec commitlint --edit "$1"

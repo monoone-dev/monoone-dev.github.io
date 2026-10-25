@@ -2,6 +2,9 @@
 import type { Component } from 'vue'
 import DiagramActor from './diagrams/DiagramActor.vue'
 import DiagramChaos from './diagrams/DiagramChaos.vue'
+import DiagramFeFlow from './diagrams/DiagramFeFlow.vue'
+import DiagramFeFrameworks from './diagrams/DiagramFeFrameworks.vue'
+import DiagramFeGrid from './diagrams/DiagramFeGrid.vue'
 import DiagramFlows from './diagrams/DiagramFlows.vue'
 import DiagramMigration from './diagrams/DiagramMigration.vue'
 import DiagramPlatform from './diagrams/DiagramPlatform.vue'
@@ -10,15 +13,17 @@ import DiagramTiers from './diagrams/DiagramTiers.vue'
 
 defineProps<{ parts: PostPart[] }>()
 
-// `:::diagram <name>` in the Markdown becomes one of these, in every language
 const diagrams: Record<string, Component> = {
-  actor: DiagramActor,
-  chaos: DiagramChaos,
-  flows: DiagramFlows,
-  migration: DiagramMigration,
-  platform: DiagramPlatform,
-  slice: DiagramSlice,
-  tiers: DiagramTiers
+  'actor': DiagramActor,
+  'chaos': DiagramChaos,
+  'fe-flow': DiagramFeFlow,
+  'fe-frameworks': DiagramFeFrameworks,
+  'fe-grid': DiagramFeGrid,
+  'flows': DiagramFlows,
+  'migration': DiagramMigration,
+  'platform': DiagramPlatform,
+  'slice': DiagramSlice,
+  'tiers': DiagramTiers
 }
 </script>
 

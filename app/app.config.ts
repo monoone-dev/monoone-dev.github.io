@@ -1,4 +1,3 @@
-// "Mono" skin: grayscale only. `primary` is remapped to pure black / white in main.css.
 export default defineAppConfig({
   ui: {
     colors: {

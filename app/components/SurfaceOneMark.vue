@@ -1,9 +1,4 @@
 <script setup lang="ts">
-// SurfaceOne symbol, from app/assets/brand/surface-one-icon.svg.
-// Inlined so gradient ids can be made unique, exactly like IndexOneMark next to it.
-// Drawn on IndexOne's 1254 canvas with the same tile and shadow, and the stacked planes scaled
-// to IndexOne's mark height (~600), so all three cards match in size.
-// `tile: false` drops the white app-icon tile and crops to the stacked planes.
 const props = withDefaults(defineProps<{ tile?: boolean }>(), { tile: true })
 
 const id = useId()
@@ -157,7 +152,6 @@ const viewBox = computed(() => (props.tile ? '0 0 1254 1254' : '372 297 508 630'
       :filter="paint('tile-shadow')"
     />
 
-    <!-- the 64-unit source mark, centered (32,32) on IndexOne's mark center at ~600 tall -->
     <g
       transform="translate(626 612) scale(11.25) translate(-32 -32)"
       stroke-linejoin="round"

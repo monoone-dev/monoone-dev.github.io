@@ -198,6 +198,11 @@
     "back": "すべての記事",
     "minutes": "約 {n} 分で読めます",
     "posts": {
+      "frontendArchitecture": {
+        "title": "大規模フロントエンドのアーキテクチャ：Angular、React、VueでのNx、NgRx、ファサード",
+        "description": "Manfred Steyerのドメインとライブラリ型のモデルに沿って大規模なフロントエンドを構成する方法。Nxの境界、任意のファサードを持つNgRx、そしてNext.jsとNuxtでの同じルール。",
+        "short": "フロントエンドアーキテクチャ"
+      },
       "slat": {
         "title": "SLAT：RustとTauriのアプリのためのバックエンドパターン",
         "description": "SLAT 1.1（Slice · Layer · Actor · Tier）の完全ガイド。ティア、スライス、アクター、プラットフォーム、強制の仕組み、移行、そして具体例を解説します。",

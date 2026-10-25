@@ -1,5 +1,3 @@
-// Every language the site ships in. Used by the i18n module (nuxt.config.ts) and by the sitemap,
-// so a new language is listed in one place and shows up in both.
 export const locales = [
   { code: 'en', language: 'en', name: 'English', file: 'en.json' },
   { code: 'pl', language: 'pl-PL', name: 'Polski', file: 'pl.json' },

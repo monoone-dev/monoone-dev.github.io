@@ -6,7 +6,6 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Mono skin — primary is ink on paper, inverted in dark mode */
 :root {
   --ui-primary: var(--ui-color-neutral-950);
   --ui-bg: var(--ui-color-neutral-50);

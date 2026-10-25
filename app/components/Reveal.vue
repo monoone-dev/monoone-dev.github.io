@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// Fades its content in once it scrolls into view. `delay` (ms) staggers siblings.
 const props = withDefaults(defineProps<{ as?: string, delay?: number }>(), { as: 'div', delay: 0 })
 
 const el = useTemplateRef<HTMLElement>('el')
