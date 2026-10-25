@@ -31,6 +31,8 @@ description: Change what the MonoOne website says or shows — add or edit a pro
 ## Content rules
 
 - **No personal names.** No people, authors, founders or team members — on the page, in alt text or in metadata.
+  One exception: a blog post credits the public author of an idea it builds on (for example the
+  front-end architecture post names Manfred Steyer). Never name MonoOne's own people.
 - **Nothing private.** Link only public repositories and public sites; never internal paths or private repo names.
 - **Privacy claims must be true.** "100% local" needs its qualifier if a feature can send data
   (opt-in cloud AI, E2EE sharing): say "unless you explicitly choose to". Do not claim "no telemetry"

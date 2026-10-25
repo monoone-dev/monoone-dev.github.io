@@ -198,6 +198,11 @@
     "back": "全部文章",
     "minutes": "阅读约 {n} 分钟",
     "posts": {
+      "frontendArchitecture": {
+        "title": "规模化前端架构：Angular、React 和 Vue 中的 Nx、NgRx 与 facade",
+        "description": "我们如何依照 Manfred Steyer 的领域与库类型模型组织大型前端：Nx 边界、带可选 facade 的 NgRx，以及在 Next.js 和 Nuxt 中的同一套规则。",
+        "short": "前端架构"
+      },
       "slat": {
         "title": "SLAT：面向 Rust 和 Tauri 应用的后端模式",
         "description": "SLAT 1.1（Slice · Layer · Actor · Tier）完整指南：层级、切片、Actor、平台、规则执行、迁移以及一个完整示例。",

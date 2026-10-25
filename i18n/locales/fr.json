@@ -198,6 +198,11 @@
     "back": "Tous les articles",
     "minutes": "{n} min de lecture | {n} min de lecture | {n} min de lecture",
     "posts": {
+      "frontendArchitecture": {
+        "title": "Architecture front-end à grande échelle : Nx, NgRx et facades en Angular, React et Vue",
+        "description": "Comment nous structurons les gros front-ends selon le modèle de Manfred Steyer : frontières Nx, NgRx avec facade optionnelle, et les mêmes règles en Next.js et Nuxt.",
+        "short": "Architecture front-end"
+      },
       "slat": {
         "title": "SLAT : un pattern backend pour les applications Rust et Tauri",
         "description": "Le guide complet de SLAT 1.1 (Slice · Layer · Actor · Tier) : tiers, slices, acteurs, plateformes, application des règles, migration et exemple complet.",
