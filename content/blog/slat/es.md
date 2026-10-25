@@ -4,9 +4,9 @@ El nombre enumera sus cuatro piezas: **S**lice, **L**ayer, **A**ctor, **T**ier. 
 
 Esta página es la referencia completa. Está escrita para que un equipo que nunca haya visto SLAT pueda adoptarlo en un proyecto nuevo o migrar uno existente sin tener que preguntarnos nada. Incluye las reglas, sus motivos, código que se puede copiar, los checks que las hacen cumplir y un ejemplo completo de una aplicación desordenada que se pone en orden paso a paso.
 
-Los números de sección son estables. Un repositorio que sigue SLAT guarda una copia breve de las reglas en `docs/slat/SLAT.md` con los mismos números, así que una referencia como «sección 17.8» significa lo mismo en esta página y en el repositorio. Cuando las dos difieren, ambas se corrigen el mismo día.
+Los números de sección son estables. Un repositorio que sigue SLAT guarda una copia breve de las reglas en `docs/slat/SLAT.md` con los mismos números, así que una referencia como «sección 17.8» significa lo mismo en esta página y en el repositorio. Cuando las dos difieren, ambas se corrigen el mismo día. Una sección nueva se añade justo antes del historial de versiones, que siempre queda al final.
 
-> **Versión 1.1** · 25 de octubre de 2026. La versión 1.1 añade la sección 12, *Plataformas*: cómo mantener en un solo lugar el código que depende del sistema operativo, para que un futuro port a Linux o Windows sea trabajo en una sola carpeta. El historial completo está en la sección 22.
+> **Versión 1.2** · 25 de octubre de 2026. La versión 1.2 añade la sección 22, *Tiempo de build y de tests*: adónde va el tiempo de compilación en un workspace SLAT, los ajustes que lo reducen y cómo ejecutar solo los tests a los que puede afectar un cambio. Además, da un check a cada regla de la guía, incluidas la pureza de `logic.rs`, los ciclos entre slices y el comando de 10 líneas. El historial completo está en la sección 23.
 
 ## 1. Por qué existe SLAT
 
@@ -127,7 +127,7 @@ Un workspace mínimo:
 ```toml
 # Cargo.toml (workspace root)
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*", "src-tauri"]
 
 [workspace.dependencies]
@@ -171,11 +171,11 @@ tauri = { version = "2", features = [] }
 
 ### 5.2. Con cuántos crates empezar
 
-El mínimo son dos: `core` y `app`. Separa los demás tiers solo cuando su código ya exista y esté limpio, es decir, cuando no importe nada de un tier superior. **Un crate vacío «para más adelante» está prohibido.** Cuesta un paso de enlazado en cada build y no aporta nada.
+El mínimo son dos: `core` y `app`. Separa los demás tiers solo cuando su código ya exista y esté limpio, es decir, cuando no importe nada de un tier superior. **Un crate vacío «para más adelante» está prohibido.** Cuesta una ejecución del compilador en cada build y sus propios binarios de test que enlazar en cada ejecución de tests, y no aporta nada.
 
 ### 5.3. Cuándo dividir un tier
 
-Cuando `core` supere unas 60.000 líneas, o cuando recompilar `core` entero tras cambiar un solo slice se vuelva molesto, mueve un grupo de slices a `core-<group>`, por ejemplo `quayside-core-run`. Quédate como máximo en seis a ocho crates. Cada crate es un paso de enlazado aparte, y en un portátil una máquina congelada cuesta más que los segundos que ahorraría una división más fina.
+Cuando `core` supere unas 60.000 líneas, o cuando recompilar `core` entero tras cambiar un solo slice se vuelva molesto, mueve un grupo de slices a `core-<group>`, por ejemplo `quayside-core-run`. Quédate como máximo en seis a ocho crates. Un crate de librería no se enlaza, pero cada crate trae sus propios binarios de test, y cada uno de ellos se enlaza por separado (sección 22.1). En un portátil, una máquina congelada cuesta más que los segundos que ahorraría una división más fina. Decide con una medición, no con una impresión: `cargo build --timings` muestra si `core` es de verdad el cuello de botella (sección 22.6).
 
 ### 5.4. Excepción de compatibilidad
 
@@ -629,7 +629,7 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 }
 ```
 
-Quien llama escribe `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Una opción nueva es un campo nuevo, no una función nueva y una línea nueva en cada llamada. Los puntos de inyección solo para tests (`faults`, `hooks`) son campos que existen únicamente en un build de test. `cfg(test)` por sí solo cubre únicamente los tests unitarios del propio crate, así que los tests de integración y los demás crates activan esos campos con una feature `test-hooks`, la misma idea que el driver falso de 14.2.
+Quien llama escribe `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. Una opción nueva es un campo nuevo, no una función nueva y una línea nueva en cada llamada. Los puntos de inyección solo para tests (`faults`, `hooks`) son campos que existen únicamente en un build de test. `cfg(test)` por sí solo cubre únicamente los tests unitarios del propio crate, así que los tests de integración y los demás crates activan esos campos con una feature `test-hooks`, la misma idea que el driver falso de 14.2. Actívala de la misma forma en todos los comandos de test (sección 22.3); si no, cada cambio entre un build con la feature y otro sin ella vuelve a compilar el crate y todo lo que está por encima.
 
 ## 11. AppState, la raíz de composición
 
@@ -878,12 +878,48 @@ Ejecútalo con `--no-tests=fail`, para que un filtro que no encuentra nada salga
 
 ### 14.2. Un driver falso sin trait
 
-Un test necesita un driver que no lance procesos reales. SLAT prohíbe un trait con una sola implementación, y una falsa no cuenta como una segunda implementación real. Dos opciones respetan la regla:
+Un test necesita un driver que no lance procesos reales. SLAT prohíbe un trait con una sola implementación, y una falsa no cuenta como una segunda implementación real. Dos opciones respetan la regla. Prefiere la primera: una feature cambia cómo se compilan `drivers` y todos los crates que están por encima, así que un build de test con ella y un build de la aplicación sin ella son dos conjuntos de artefactos separados (sección 22.3). Una costura de datos no cuesta nada de tiempo de compilación.
 
 - **Una costura de datos.** El servicio recibe la *salida* del driver como un valor o un canal, no el driver en sí. El test envía líneas al canal.
 - **Un build de test.** `drivers` expone `#[cfg(any(test, feature = "fake"))] pub mod fake;` con las mismas funciones que el módulo real, y el crate de test activa la feature `fake`.
 
 Cuando aparece una segunda implementación real (un segundo proveedor, una segunda plataforma), ese es el momento de un trait.
+
+### 14.3. Mutantes en el diff
+
+Un test que pasa solo demuestra algo si fallaría con código incorrecto. Es la sección 16.2 aplicada a los tests. `cargo-mutants` cambia el código (invierte una condición, sustituye un valor de retorno, borra una instrucción) e informa de cada cambio que ningún test ha detectado. Ejecútalo sobre las líneas que ha cambiado un pull request, no sobre todo el workspace:
+
+```bash
+git diff origin/main...HEAD > changes.diff
+cargo mutants --in-diff changes.diff --package quayside-core
+```
+
+`logic.rs` y `update.rs` son donde más rinde. Son puros, así que sus tests se ejecutan en microsegundos, y un mutante que sobrevive ahí es una regla de negocio que nadie comprueba. Un mutante que sobrevive se corrige con un test, nunca con una exclusión.
+
+### 14.4. Tests de propiedades para `update`
+
+Un test de `update` comprueba un guion de mensajes. Un test de propiedades comprueba miles de guiones aleatorios contra reglas que siempre deben cumplirse. Con `proptest`, genera una secuencia de valores `Msg` y comprueba los invariantes del estado después de cada paso:
+
+```rust
+proptest! {
+    #[test]
+    fn a_stale_generation_never_changes_the_phase(script in messages(64)) {
+        let mut state = State::default();
+        for msg in script {
+            let generation_before = state.generation;
+            let phase_before = state.phase.clone();
+            let stale = msg.generation().is_some_and(|g| g != generation_before);
+            update(&mut state, msg);
+            prop_assert!(state.generation >= generation_before);
+            if stale {
+                prop_assert_eq!(&state.phase, &phase_before);
+            }
+        }
+    }
+}
+```
+
+`messages(n)` es una estrategia del módulo de test que construye valores `Msg` aleatorios, y `Msg::generation()` es una pequeña función auxiliar que devuelve la generación que lleva un mensaje. La fuga de la sección 20.2 es exactamente el tipo de error que un test así encuentra por sí solo: nadie tiene que imaginar el orden de mensajes que la provoca.
 
 ## 15. Límites de tamaño
 
@@ -903,7 +939,7 @@ Primero el mecanismo, después las palabras. Una regla que un script puede compr
 
 | Regla | Quién la hace cumplir |
 |---|---|
-| solo `app` conoce Tauri | `Cargo.toml` (ninguna dependencia de `tauri` en otro sitio) |
+| solo `app` conoce Tauri | `Cargo.toml` (ninguna dependencia de `tauri` en otro sitio); `cargo-deny` para las dependencias transitivas (16.5) |
 | los tiers solo dependen hacia abajo | `Cargo.toml` |
 | solo `store` abre la conexión de escritura | un check con grep: `Connection::open` solo en el crate `store`. Los archivos `store.rs` de los slices usan tipos de `rusqlite`, así que la dependencia por sí sola no basta. |
 | `#[tauri::command]` solo en `app/*/commands.rs` | un check con grep |
@@ -911,7 +947,11 @@ Primero el mecanismo, después las palabras. Una regla que un script puede compr
 | `emit` solo en `app/*/events.rs` | un check con grep |
 | ningún import profundo entre slices | un check que busca `crate::<a>::<layer>::` desde otro slice |
 | ningún `static` con estado en `core` | un check con grep de `static .*(Mutex|RwLock)` |
-| `update.rs` no tiene E/S | un check: ni `async`, ni `tokio::`, ni `std::fs`, ni `store::` en `update.rs` |
+| `logic.rs` y `update.rs` no tienen E/S | un check: ni `async`, ni `tokio::`, ni `std::fs`, ni `store::`, ni `drivers::` en `logic.rs`, `logic/` y `update.rs` |
+| el `mod.rs` de un slice contiene solo `mod …;` y `pub use …;` | un check sobre cada `mod.rs` bajo `core/src/` |
+| ningún ciclo entre slices | un check que construye el grafo de slices a partir de los imports y lo ordena |
+| un comando de Tauri tiene como máximo 10 líneas | un check sobre `app/*/commands.rs` |
+| ni `unwrap()` ni `panic!` fuera de los tests en `core`, `store`, `drivers` | los lints de Clippy `unwrap_used` y `panic` (16.5) |
 | el sistema operativo solo en `drivers/src/platform/` y `app/src/platform.rs` | un check con grep y la lista de 12.3 |
 | los crates distintos de `app` compilan en todas las plataformas | `cargo check` en runners de CI de Ubuntu y Windows |
 | límites de tamaño | un check con una lista base que solo puede reducirse |
@@ -948,7 +988,7 @@ echo "emit: $(printf '%s\n' "$found" | sed '/^$/d' | wc -l | tr -d ' ') files on
 
 Antes de fiarte de un check, introduce una infracción real, comprueba que se pone en rojo y quítala. Un check que nunca ha estado en rojo nunca se ha probado.
 
-Los checks con grep de SLAT buscan código prohibido, así que una coincidencia dentro de un comentario los pone en rojo, no en verde. Es molesto pero seguro, y la solución es borrar el código muerto. El tipo peligroso es un check que exige que una cadena esté presente: pasa con un comentario. Una regla así se demuestra ejecutando código, no leyendo texto.
+Los checks con grep de SLAT buscan código prohibido, así que una coincidencia dentro de un comentario los pone en rojo, no en verde. Es molesto pero seguro, y la solución es borrar el código muerto. Un check que lee el árbol sintáctico (16.5) no tiene este problema. El tipo peligroso es un check que exige que una cadena esté presente: pasa con un comentario. Una regla así se demuestra ejecutando código, no leyendo texto.
 
 ### 16.3. El job de plataformas en CI
 
@@ -964,10 +1004,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --exclude quayside --all-targets
 ```
 
-En un repositorio real, fija las versiones de las actions con hashes de commit completos. El job solo compila; no ejecuta tests en plataformas que el producto aún no soporta, así que es barato.
+En un repositorio real, fija las versiones de las actions con hashes de commit completos. El job solo compila; no ejecuta tests en plataformas que el producto aún no soporta, así que es barato. El paso de caché lo mantiene barato: sin él, cada pull request compila todas las dependencias desde cero en dos sistemas operativos.
 
 ### 16.4. Checks del conjunto completo
 
@@ -978,9 +1019,66 @@ En un repositorio real, fija las versiones de las actions con hashes de commit c
 | `checks/slat-emit.sh` | `emit` solo en `src-tauri/src/*/events.rs` |
 | `checks/slat-deep-imports.sh` | ningún `crate::<slice>::<layer>::` desde otro slice |
 | `checks/slat-static-state.sh` | ningún `static … Mutex|RwLock` en `crates/*-core*` |
-| `checks/slat-pure-update.sh` | `update.rs` sin `async`, `tokio::`, `std::fs`, `store::` |
+| `checks/slat-pure.sh` | `logic.rs`, `logic/` y `update.rs` sin `async`, `tokio::`, `std::fs`, `store::`, `drivers::` |
+| `checks/slat-slice-mod.sh` | el `mod.rs` de un slice contiene solo `mod …;` y `pub use …;` |
+| `checks/slat-slice-cycles.sh` | ningún ciclo entre slices |
+| `checks/slat-command-size.sh` | cada `#[tauri::command]` tiene como máximo 10 líneas |
 | `checks/slat-platform.sh` | las prohibiciones de 12.3 fuera de `platform/` |
 | `checks/slat-size.sh` | los archivos de más de 1500 líneas de la lista base solo pueden reducirse |
+
+El check de ciclos no necesita ninguna librería de grafos. Cada `use crate::<other>` dentro de `core/src/<slice>/` es una arista, y `tsort` informa de un grafo con un bucle en su salida de error:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
+if [ -n "$loops" ]; then
+  printf '%s\n' "$loops"
+  echo "slices import each other in a loop; move the shared part into its own slice (7.2)"
+  exit 1
+fi
+echo "slices: $(printf '%s\n' "$edges" | sed '/^$/d' | wc -l | tr -d ' ') edges, no cycle"
+```
+
+La misma lista de aristas es el grafo de slices que usa la sección 22.4 para encontrar los slices a los que puede afectar un cambio.
+
+### 16.5. Lints y prohibiciones antes que scripts
+
+Algunas reglas no necesitan ningún script, porque las puede hacer cumplir una herramienta que el workspace ya ejecuta.
+
+**Clippy, por tier.** Clippy lee primero el `clippy.toml` de la carpeta del propio crate, así que cada tier puede prohibir cosas distintas. Los lints se activan en `Cargo.toml`:
+
+```toml
+[workspace.lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+```
+
+```toml
+[lints]
+workspace = true
+```
+
+El primer bloque va en la raíz del workspace, el segundo en `kit`, `store`, `drivers` y `core`. El crate `app` no los hereda. Un `clippy.toml` en la raíz del workspace con `allow-unwrap-in-tests = true` y `allow-panic-in-tests = true` mantiene legibles los tests. Un `clippy.toml` en la carpeta de un crate sustituye al de la raíz, así que repite esas dos líneas. Un `clippy.toml` en `core` puede enumerar `disallowed-methods` y `disallowed-types`, por ejemplo `std::process::Command` y `std::sync::Mutex`, para que un proceso lanzado desde un slice o un bloqueo dentro de un actor sea un error de lint, no una coincidencia de grep.
+
+**`cargo-deny`, para todo el grafo de dependencias.** `Cargo.toml` impide `use tauri::…` en `core`, pero no una librería que mete `tauri` por la puerta de atrás. Esa fuga no se ve en una revisión, y hace que los tests de `core` compilen la parte más pesada de la aplicación. `cargo-deny` comprueba todo el grafo. En `deny.toml`:
+
+```toml
+[bans]
+deny = [
+  { crate = "tauri", wrappers = ["quayside", "tauri-plugin-shell", "tauri-plugin-dialog"] },
+]
+```
+
+Así, `tauri` solo puede aparecer como dependencia directa de los crates de `wrappers`: el crate `app` y los plugins de Tauri que usa, que dependen ellos mismos de `tauri`. Un plugin que se añade a la aplicación entra en la lista en el mismo pull request. Cualquier otro camino hasta `tauri`, como una librería que usa `core`, sale en rojo.
+
+**Sintaxis en lugar de texto.** Los checks con grep de 16.4 se pueden escribir como reglas de `ast-grep`. `ast-grep` busca en el árbol sintáctico de Rust, así que un comentario o una cadena nunca coinciden, y un import repartido en varias líneas (`use crate::run::{logic::plan, model::Run};`) sigue siendo un solo import. Un archivo de reglas por check, con globs `files` e `ignores` tomados de las rutas de 16.4, sustituye a `grep -E`. La lista base (16.1) se queda como está: las reglas producen la lista de infracciones, y el mismo script resta la lista base.
 
 ## 17. Recetas
 
@@ -1056,12 +1154,14 @@ SLAT se diseñó en un equipo en el que buena parte del código la escriben agen
 2. **Un check vale más que una frase en el prompt.** «No emitas desde core» en un prompt se cumple la mayoría de las veces. Un check en rojo se cumple siempre. Escribe primero la regla como check, y como línea del prompt solo cuando no se pueda comprobar.
 3. **Las recetas son prompts.** La sección 17 está escrita a propósito como pasos numerados: pega la receta en la tarea y el agente creará los archivos en los lugares esperados y en el orden esperado.
 
+Los agentes también cambian cómo se compila un workspace. Varios agentes en varias copias de trabajo son varios builds en frío de las mismas dependencias a la vez, que es el portátil congelado de la sección 19.2. La sección 22.5 muestra cómo comparten una sola caché de compilación, y la sección 22.4 cómo cada uno ejecuta solo los tests a los que puede afectar su cambio.
+
 Una sección que puedes copiar en la guía para contribuidores de tu repositorio (`AGENTS.md`, `CLAUDE.md` o equivalente):
 
 ```markdown
-## Backend layout: SLAT 1.1
+## Backend layout: SLAT 1.2
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.1.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1074,6 +1174,7 @@ Reference: https://monoone.dev/blog/slat/
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
+- Before pushing, run the tests the change affects (SLAT section 22.4), then the checks.
 ```
 
 ## 19. Migrar una base de código existente
@@ -1113,7 +1214,7 @@ Dos cosas no salen gratis ni siquiera aquí. Los archivos que usan `super::` o `
 | Cientos de tests importan rutas antiguas | Fachadas en las rutas antiguas. No muevas los tests en los mismos pull requests. |
 | Las ramas paralelas entran en conflicto con `git mv` | Haz las divisiones de crates cuando haya menos ramas abiertas. Cada movimiento es su propio pull request. |
 | Tras la división, se necesitan elementos `pub(crate)` desde otro crate | Amplíalos a `pub`. Tras la migración, revisa qué puede volver a `pub(crate)`. |
-| El tiempo de compilación crece con el número de crates | Como máximo seis a ocho crates. Un build pesado cada vez. |
+| El tiempo de compilación crece con el número de crates | Como máximo seis a ocho crates. Un build pesado cada vez. Mide con `cargo build --timings` antes y después de cada división (22.6). |
 | Un refactor cambia el comportamiento sin que se note | Primero los tests de `update`, contra el comportamiento actual. Movimientos y correcciones en pull requests separados. |
 | Una parte del código no puede cambiar en absoluto (una funcionalidad crítica, una zona congelada) | Se queda donde está y llega a la nueva estructura solo a través de fachadas. Las fachadas son código añadido. |
 
@@ -1348,6 +1449,7 @@ Estas cifras son ilustrativas. Lo que importa es la forma del cambio: cada fila 
 - Eventos solo desde `app/<slice>/events.rs`.
 - Un único target de tests de integración, `tests/it/`.
 - Los checks de la sección 16 en CI desde la primera semana, cuando las listas base todavía están vacías.
+- Los ajustes de build de la sección 22: información de depuración, enlazador, un solo conjunto de features, una caché de compilación en CI.
 - La sección de SLAT del apartado 18 en la guía para contribuidores.
 
 ### 21.2. Lista para un proyecto existente
@@ -1381,7 +1483,7 @@ La parte compartida se convierte en su propio slice, y ambos dependen de él. Lo
 Porque un comando que solo traduce no necesita un test unitario propio. Diez líneas bastan para deserializar, llamar y convertir; no bastan para esconder una decisión.
 
 **¿SLAT ralentiza la compilación?**
-Dividir en crates suele acelerar los builds incrementales, porque un cambio en un slice no recompila `kit`, `store` ni `drivers`. Puede ralentizar un poco un build limpio por los pasos de enlazado adicionales, y por eso SLAT limita el número de crates.
+Dividir en crates suele acelerar los builds incrementales, porque un cambio en un slice no recompila `kit`, `store` ni `drivers`. Puede ralentizar un poco un build limpio por los binarios de test adicionales que hay que enlazar, y por eso SLAT limita el número de crates. La sección 22 enumera los ajustes que importan más que el número de crates.
 
 **Solo distribuimos en macOS. ¿Merece la pena la sección 12 ya?**
 Sí, su parte barata: `kit::paths`, contratos para las pocas llamadas al sistema que ya tienes, `unsupported.rs` y el job de compilación en Linux y Windows. Eso cuesta unos días ahora y ahorra más adelante una búsqueda por toda la base de código. Los archivos `linux.rs` y `windows.rs` en sí esperan hasta que se decida hacer el port.
@@ -1389,10 +1491,132 @@ Sí, su parte barata: `kit::paths`, contratos para las pocas llamadas al sistema
 **¿Cómo se manejan los agentes de código con SLAT?**
 Bien, porque la estructura es fija y las reglas importantes son checks, no consejos. Consulta la sección 18.
 
-## 22. Historial de versiones
+## 22. Tiempo de build y de tests
+
+*Novedad de la versión 1.2.*
+
+El mayor ahorro de SLAT viene de la sección 5: solo `app` conoce Tauri, así que los tests de todos los demás crates nunca compilan Tauri ni la vista web que hay detrás, la parte más pesada de la aplicación. El resto del tiempo depende de unos pocos ajustes y hábitos, cada uno de una o dos líneas de configuración. Esta sección los enumera por orden de lo que suelen ahorrar.
+
+Primero, mide. `cargo build --timings` escribe un informe HTML con el tiempo de compilación de cada crate y cuántos se compilaron en paralelo. Guarda el informe de antes de un cambio y compáralo.
+
+### 22.1. Adónde va el tiempo
+
+- **Un crate de librería se compila, no se enlaza.** Lo que se enlaza es cada binario y, en una ejecución de tests, cada binario de test.
+- **Cada crate puede tener tres tipos de binarios de test:** sus tests unitarios, cada archivo que está directamente en `tests/` (la sección 14.1 lo reduce a uno, `tests/it`) y sus ejemplos de documentación. Desde la edición 2024, los ejemplos de documentación de un crate se compilan como un solo binario. Un crate sin ejemplos de documentación pone `doctest = false` bajo `[lib]`.
+- **Una ejecución de tests por debajo de `app` nunca necesita Tauri.** El comando de cada día es `cargo nextest run --workspace --exclude quayside`. Solo los tests end-to-end de la sección 14 compilan el crate `app`.
+- **La información de depuración es una gran parte del tiempo de enlazado.** La mayor parte nunca se lee.
+
+### 22.2. Ajustes de build
+
+En el `Cargo.toml` de la raíz del workspace:
+
+```toml
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+```
+
+Tus propios crates conservan los archivos y los números de línea en los backtraces; las dependencias no reciben información de depuración. Vuelve a subirla a `debug = true` durante una sesión cuando necesites un depurador.
+
+El enlazador importa sobre todo para los binarios de test. En Linux para x86-64, Rust usa `rust-lld` por defecto desde la versión 1.90. Los demás destinos de Linux pueden usar `mold`. En macOS, el enlazador que viene con Xcode 15 y posteriores ya es rápido, así que déjalo como está. En Windows, `rust-lld` suele ser mucho más rápido que el enlazador por defecto. En `.cargo/config.toml`:
+
+```toml
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+```
+
+Elimina las dependencias que nadie usa: `cargo machete` las enumera, y cada una es tiempo de compilación para nada.
+
+### 22.3. Un solo conjunto de features
+
+Cargo compila una dependencia una vez por cada conjunto distinto de features que se le pide. En un workspace SLAT, dos cosas piden conjuntos distintos:
+
+1. **Comandos distintos.** `cargo test --workspace` unifica las features de todos los miembros; `cargo test -p quayside-core`, solo las que necesita `core`. Ejecutar ambos compila dos veces `tokio`, `serde` y todo lo demás. `cargo-hakari` lo resuelve: mantiene un crate generado, `workspace-hack`, del que dependen todos los miembros, con la unión de todas las features, así que todos los comandos compilan las dependencias de la misma forma. `cargo hakari generate` lo actualiza, y `cargo hakari verify` en CI falla cuando alguien lo ha olvidado.
+2. **Features de test de tus propios crates.** La feature `fake` de 14.2 y `test-hooks` de la sección 10 cambian `drivers` y `core`, así que todos los crates que están por encima se vuelven a compilar cuando la feature cambia. Prefiere una costura de datos (14.2), que no necesita ninguna feature. Donde una feature sea necesaria, todos los comandos de test la activan de la misma forma. Pon ese comando en un solo lugar, en `.cargo/config.toml`:
+
+```toml
+[alias]
+t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
+```
+
+Todo el mundo, incluidos los agentes y CI, ejecuta `cargo t` para la suite completa, y cada comando de test más acotado mantiene las mismas `--features`. Un comando de test con otra lista de features es un segundo build.
+
+### 22.4. Ejecutar lo que un cambio puede afectar
+
+La estructura fija dice a qué slice pertenece un archivo, y el grafo de slices del check de ciclos (16.4) dice qué slices dependen de él. Juntos dan a cada tipo de cambio su propio conjunto de tests:
+
+| Qué ha cambiado | Qué se ejecuta |
+|---|---|
+| `logic.rs`, `model.rs`, `store.rs`, `service.rs` o `actor/` dentro de un slice, sin cambios en su `mod.rs` | los tests de ese slice, y `cargo mutants --in-diff` (14.3) |
+| el `mod.rs` de un slice, su API pública | ese slice y todos los slices que lo importan |
+| `kit`, `store` o `drivers` | todos los crates que dependen de él: `cargo nextest run -E 'rdeps(quayside-store)'` |
+| `drivers/src/platform/` | también el test de contrato (12.5); en CI, el job de plataformas (16.3) |
+| solo `app` | los tests end-to-end a través de la entrada; nada ha cambiado en `core` |
+| `Cargo.toml`, `Cargo.lock`, `.cargo/`, el archivo del toolchain | todo |
+
+Los tests de un slice son fáciles de seleccionar porque sus nombres empiezan por el slice: los tests unitarios viven en `core/src/<slice>/`, así que sus nombres empiezan por `<slice>::`, y los módulos de `tests/it` también empiezan por el slice (`recording_stops_on_time_limit`). Una primera versión de la selección cabe en un script corto:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+changed="$(git diff --name-only origin/main...HEAD)"
+core="crates/quayside-core/src"
+tests=(cargo nextest run --features quayside-drivers/fake --no-tests=fail)
+
+if grep -qE '(^|/)Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain|^crates/quayside-(kit|store|drivers)/' <<< "$changed"; then
+  exec "${tests[@]}" --workspace --exclude quayside
+fi
+if grep -qE "^$core/(lib\.rs|.*mod\.rs)$" <<< "$changed"; then
+  exec "${tests[@]}" -p quayside-core
+fi
+
+slices="$(sed -nE "s#^$core/([a-z_]+)/.*#\1#p" <<< "$changed" | sort -u | paste -sd'|' -)"
+if [ -z "$slices" ]; then
+  echo "no slice of core changed"
+  exit 0
+fi
+exec "${tests[@]}" -p quayside-core -E "test(/^($slices)(::|_)/)"
+```
+
+Es prudente a propósito: un cambio en cualquier `mod.rs` ejecuta todo `core` en lugar de seguir el grafo de slices. Sustituye ese paso por el grafo cuando la suite de `core` se vuelva lenta.
+
+La selección sirve para ir rápido, no como prueba. Usa tres niveles:
+
+| Dónde | Qué se ejecuta |
+|---|---|
+| en tu máquina y en el bucle de un agente | la selección de arriba |
+| en CI, en un pull request | todos los crates que dependen de un crate cambiado (`rdeps`) |
+| en `main`, o en la cola de merge | la suite completa |
+
+`--no-tests=fail` (14.1) sigue activado en todos los niveles, así que una selección que no encuentra nada sale en rojo, no en un verde silencioso.
+
+### 22.5. Una caché para muchas copias de trabajo
+
+Los agentes de código suelen trabajar en paralelo, cada uno en su propia copia de trabajo, y cada copia de trabajo tiene su propio `target/`. Sin una caché compartida, cuatro agentes compilan las mismas dependencias cuatro veces en el mismo momento.
+
+Configura `sccache` como envoltorio del compilador, en el `~/.cargo/config.toml` del usuario o en el entorno (`RUSTC_WRAPPER=sccache`). Su caché local la comparten todas las copias de trabajo de la máquina, así que las dependencias se compilan una sola vez. `sccache` no guarda en caché tus propios crates, que Cargo compila de forma incremental, y eso está bien: son la parte pequeña.
+
+Limita cuánta máquina puede ocupar un build con `CARGO_BUILD_JOBS`, por ejemplo la mitad de los núcleos, para que un segundo build vaya más lento en lugar de congelar la máquina. La regla de la sección 19.2 sigue vigente: un build pesado cada vez.
+
+### 22.6. CI
+
+- **Una caché en cada job de Rust**, incluido el job de plataformas de 16.3. `Swatinem/rust-cache` conserva las dependencias y la carpeta target entre ejecuciones, con `Cargo.lock` como clave.
+- **Compilar una vez, probar en paralelo**, cuando la suite tarda más de unos minutos: `cargo nextest archive` compila los binarios de test en un job, y varios jobs ejecutan su parte con `--partition hash:1/3`, `2/3`, `3/3`.
+- **Un informe de tiempos en `main`.** `cargo build --timings` como artefacto de cada build de `main`. Cuando la barra de `core` se alarga cada vez más tras cambiar un solo slice, esa es la medición que pide la sección 5.3 antes de una división.
+- **`cargo hakari verify`** y **`cargo deny check`** junto a los checks de la sección 16. Los dos tardan segundos.
+
+## 23. Historial de versiones
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.2 | 25 de octubre de 2026 | Sección 22, *Tiempo de build y de tests*: adónde va el tiempo de compilación, ajustes de build, un solo conjunto de features, ejecutar los tests a los que puede afectar un cambio, una caché de compilación compartida para copias de trabajo en paralelo, CI. Nuevos apartados 14.3 (mutantes en el diff), 14.4 (tests de propiedades para `update`) y 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checks para reglas que no tenían ninguno: pureza de `logic.rs`, el `mod.rs` de un slice, ciclos entre slices, el comando de 10 líneas, `unwrap()` y `panic!`. Se prefieren las costuras de datos a una feature `fake`. Corregidos el coste de un crate (5.2, 5.3), `resolver = "3"` para la edición 2024 (5.1) y el paso de caché en el job de plataformas (16.3). El historial de versiones pasa de la sección 22 a la sección 23; las secciones 1 a 21 conservan sus números. |
 | 1.1 | 25 de octubre de 2026 | Sección 12, *Plataformas*: la carpeta `platform/` en `drivers`, contratos de plataforma, prohibiciones fuera de `platform/`, reglas para rutas, archivos y texto, tests de plataforma, job de compilación en CI para Linux y Windows, receta de port. Añadidos en tiers, cumplimiento, recetas y el árbol de decisión. |
 | 1.0 | 24 de octubre de 2026 | Primera versión: tiers, slices con capas fijas, reglas de imports, flujos de datos, actores, el estado de la aplicación como raíz de composición, errores, tests, límites de tamaño, cumplimiento, recetas y migración. |
 
