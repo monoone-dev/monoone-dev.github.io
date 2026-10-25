@@ -205,7 +205,7 @@
       },
       "slat": {
         "title": "SLAT : un pattern backend pour les applications Rust et Tauri",
-        "description": "Le guide complet de SLAT 1.1 (Slice · Layer · Actor · Tier) : tiers, slices, acteurs, plateformes, application des règles, migration et exemple complet.",
+        "description": "Le guide complet de SLAT 1.2 (Slice · Layer · Actor · Tier) : tiers, slices, acteurs, plateformes, application des règles, migration et exemple complet.",
         "short": "Guide SLAT"
       }
     },

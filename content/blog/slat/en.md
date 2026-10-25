@@ -4,9 +4,9 @@ The name lists its four building blocks: **S**lice, **L**ayer, **A**ctor, **T**i
 
 This page is the complete reference. It is written so that a team that has never seen SLAT can adopt it in a new project or migrate an existing one, without asking us anything. It includes the rules, the reasons behind them, code you can copy, the checks that enforce them, and a worked example of a messy application brought into shape step by step.
 
-Section numbers are stable. A repository that follows SLAT keeps a short copy of the rules in `docs/slat/SLAT.md` with the same numbers, so a reference such as "section 17.8" means the same thing on this page and in the repository. When the two differ, both are corrected on the same day.
+Section numbers are stable. A repository that follows SLAT keeps a short copy of the rules in `docs/slat/SLAT.md` with the same numbers, so a reference such as "section 17.8" means the same thing on this page and in the repository. When the two differ, both are corrected on the same day. A new section is added just before the version history, which always stays last.
 
-> **Version 1.1** · 25 October 2026. Version 1.1 adds section 12, *Platforms*: how to keep code that depends on the operating system in one place, so that a later Linux or Windows port is work in a single folder. The full history is in section 22.
+> **Version 1.2** · 25 October 2026. Version 1.2 adds section 22, *Build and test time*: where compile time goes in a SLAT workspace, the settings that cut it, and how to run only the tests a change can affect. It also gives every rule of the guide a check, including purity of `logic.rs`, slice cycles and the 10-line command. The full history is in section 23.
 
 ## 1. Why SLAT exists
 
@@ -127,7 +127,7 @@ A minimal workspace:
 ```toml
 # Cargo.toml (workspace root)
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*", "src-tauri"]
 
 [workspace.dependencies]
@@ -171,11 +171,11 @@ tauri = { version = "2", features = [] }
 
 ### 5.2. How many crates to start with
 
-The minimum is two: `core` and `app`. Split out the other tiers only when their code already exists and is clean, which means it imports nothing from a higher tier. **An empty crate "for later" is forbidden.** It costs a link step on every build and teaches nothing.
+The minimum is two: `core` and `app`. Split out the other tiers only when their code already exists and is clean, which means it imports nothing from a higher tier. **An empty crate "for later" is forbidden.** It costs a compiler run on every build and its own test binaries to link on every test run, and teaches nothing.
 
 ### 5.3. When to split a tier
 
-When `core` grows past about 60,000 lines, or a full rebuild of `core` after a change to one slice becomes painful, move a group of slices into `core-<group>`, for example `quayside-core-run`. Stay at six to eight crates at most. Each crate is a separate link step, and on a laptop a frozen machine costs more than the seconds a finer split would save.
+When `core` grows past about 60,000 lines, or a full rebuild of `core` after a change to one slice becomes painful, move a group of slices into `core-<group>`, for example `quayside-core-run`. Stay at six to eight crates at most. A library crate is not linked, but each crate brings its own test binaries, and each of those is linked separately (section 22.1). On a laptop a frozen machine costs more than the seconds a finer split would save. Decide with a measurement, not a feeling: `cargo build --timings` shows whether `core` is really the bottleneck (section 22.6).
 
 ### 5.4. Compatibility exception
 
@@ -629,7 +629,7 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 }
 ```
 
-Callers write `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. A new option is one new field, not a new function and a new line in every caller. Test-only injection points (`faults`, `hooks`) are fields that exist only in a test build. `cfg(test)` alone covers only the crate's own unit tests, so integration tests and other crates switch the fields on with a `test-hooks` feature, the same idea as the fake driver in 14.2.
+Callers write `StartRequest { workflow, budget: Some(limit), ..Default::default() }`. A new option is one new field, not a new function and a new line in every caller. Test-only injection points (`faults`, `hooks`) are fields that exist only in a test build. `cfg(test)` alone covers only the crate's own unit tests, so integration tests and other crates switch the fields on with a `test-hooks` feature, the same idea as the fake driver in 14.2. Switch it on the same way in every test command (section 22.3); otherwise every switch between a build with the feature and one without it compiles the crate and everything above it again.
 
 ## 11. AppState, the composition root
 
@@ -878,12 +878,48 @@ Run with `--no-tests=fail`, so that a filter that matches nothing is red instead
 
 ### 14.2. A fake driver without a trait
 
-A test needs a driver that does not start real processes. SLAT forbids a trait with one implementation, and a fake does not count as a second real one. Two options keep the rule:
+A test needs a driver that does not start real processes. SLAT forbids a trait with one implementation, and a fake does not count as a second real one. Two options keep the rule. Prefer the first: a feature changes how `drivers` and every crate above it compile, so a test build with it and an application build without it are two separate sets of artifacts (section 22.3). A data seam costs no compile time at all.
 
 - **A data seam.** The service takes the driver's *output* as a value or a channel, not the driver itself. The test sends lines into the channel.
 - **A test build.** `drivers` exposes `#[cfg(any(test, feature = "fake"))] pub mod fake;` with the same functions as the real module, and the test crate enables the `fake` feature.
 
 When a second real implementation appears (a second provider, a second platform), that is the moment for a trait.
+
+### 14.3. Mutants in the diff
+
+A test that passes proves something only if it would fail on wrong code. That is section 16.2 applied to tests. `cargo-mutants` changes the code (it flips a condition, replaces a return value, deletes a statement) and reports every change that no test noticed. Run it on the lines a pull request changed, not on the whole workspace:
+
+```bash
+git diff origin/main...HEAD > changes.diff
+cargo mutants --in-diff changes.diff --package quayside-core
+```
+
+`logic.rs` and `update.rs` are where this pays off most. They are pure, so their tests run in microseconds, and a surviving mutant there is a business rule nobody checks. A surviving mutant is fixed with a test, never with an exclusion.
+
+### 14.4. Property tests for `update`
+
+An `update` test checks one script of messages. A property test checks thousands of random scripts against rules that must always hold. With `proptest`, generate a sequence of `Msg` values and assert the invariants of the state after every step:
+
+```rust
+proptest! {
+    #[test]
+    fn a_stale_generation_never_changes_the_phase(script in messages(64)) {
+        let mut state = State::default();
+        for msg in script {
+            let generation_before = state.generation;
+            let phase_before = state.phase.clone();
+            let stale = msg.generation().is_some_and(|g| g != generation_before);
+            update(&mut state, msg);
+            prop_assert!(state.generation >= generation_before);
+            if stale {
+                prop_assert_eq!(&state.phase, &phase_before);
+            }
+        }
+    }
+}
+```
+
+`messages(n)` is a strategy of the test module that builds random `Msg` values, and `Msg::generation()` is a small helper that returns the generation a message carries. The leak from section 20.2 is exactly the kind of bug such a test finds on its own: no one has to think of the order of messages that causes it.
 
 ## 15. Size limits
 
@@ -903,7 +939,7 @@ Mechanism first, words second. A rule that a script can check should never depen
 
 | Rule | Who enforces it |
 |---|---|
-| only `app` knows Tauri | `Cargo.toml` (no `tauri` dependency elsewhere) |
+| only `app` knows Tauri | `Cargo.toml` (no `tauri` dependency elsewhere); `cargo-deny` for transitive dependencies (16.5) |
 | tiers depend only downward | `Cargo.toml` |
 | only `store` opens the writing connection | a grep check: `Connection::open` only in the `store` crate. Slice `store.rs` files use `rusqlite` types, so the dependency alone is not enough. |
 | `#[tauri::command]` only in `app/*/commands.rs` | a grep check |
@@ -911,7 +947,11 @@ Mechanism first, words second. A rule that a script can check should never depen
 | `emit` only in `app/*/events.rs` | a grep check |
 | no deep imports between slices | a check for `crate::<a>::<layer>::` from another slice |
 | no `static` with state in `core` | a grep check for `static .*(Mutex|RwLock)` |
-| `update.rs` has no I/O | a check: no `async`, `tokio::`, `std::fs`, `store::` in `update.rs` |
+| `logic.rs` and `update.rs` have no I/O | a check: no `async`, `tokio::`, `std::fs`, `store::`, `drivers::` in `logic.rs`, `logic/` and `update.rs` |
+| a slice's `mod.rs` holds only `mod …;` and `pub use …;` | a check on every `mod.rs` under `core/src/` |
+| no cycles between slices | a check that builds the slice graph from imports and sorts it |
+| a Tauri command has at most 10 lines | a check on `app/*/commands.rs` |
+| no `unwrap()` and `panic!` outside tests in `core`, `store`, `drivers` | Clippy lints `unwrap_used` and `panic` (16.5) |
 | operating system only in `drivers/src/platform/` and `app/src/platform.rs` | a grep check with the list from 12.3 |
 | crates other than `app` compile on every platform | `cargo check` on Ubuntu and Windows CI runners |
 | size limits | a check with a baseline list that may only shrink |
@@ -948,7 +988,7 @@ echo "emit: $(printf '%s\n' "$found" | sed '/^$/d' | wc -l | tr -d ' ') files on
 
 Before you trust a check, plant a real violation, watch it turn red, and remove it. A check that has never been red has never been tested.
 
-The grep checks in SLAT look for forbidden code, so a match inside a comment turns them red, not green. That is annoying but safe, and the fix is to delete the dead code. The dangerous kind is a check that requires a string to be present: it passes on a comment. Prove a rule like that by running code, not by reading text.
+The grep checks in SLAT look for forbidden code, so a match inside a comment turns them red, not green. That is annoying but safe, and the fix is to delete the dead code. A check that reads the syntax tree (16.5) does not have this problem. The dangerous kind is a check that requires a string to be present: it passes on a comment. Prove a rule like that by running code, not by reading text.
 
 ### 16.3. The platform job in CI
 
@@ -964,10 +1004,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --exclude quayside --all-targets
 ```
 
-Pin action versions to full commit hashes in a real repository. The job only compiles; it runs no tests on platforms the product does not support yet, so it is cheap.
+Pin action versions to full commit hashes in a real repository. The job only compiles; it runs no tests on platforms the product does not support yet, so it is cheap. The cache step keeps it cheap: without it, every pull request compiles all dependencies from nothing on two operating systems.
 
 ### 16.4. Checks for the whole set
 
@@ -978,9 +1019,66 @@ Pin action versions to full commit hashes in a real repository. The job only com
 | `checks/slat-emit.sh` | `emit` only in `src-tauri/src/*/events.rs` |
 | `checks/slat-deep-imports.sh` | no `crate::<slice>::<layer>::` from another slice |
 | `checks/slat-static-state.sh` | no `static … Mutex|RwLock` in `crates/*-core*` |
-| `checks/slat-pure-update.sh` | `update.rs` without `async`, `tokio::`, `std::fs`, `store::` |
+| `checks/slat-pure.sh` | `logic.rs`, `logic/` and `update.rs` without `async`, `tokio::`, `std::fs`, `store::`, `drivers::` |
+| `checks/slat-slice-mod.sh` | a slice's `mod.rs` holds only `mod …;` and `pub use …;` |
+| `checks/slat-slice-cycles.sh` | no cycles between slices |
+| `checks/slat-command-size.sh` | every `#[tauri::command]` has at most 10 lines |
 | `checks/slat-platform.sh` | the prohibitions from 12.3 outside `platform/` |
 | `checks/slat-size.sh` | files over 1,500 lines from the baseline may only shrink |
+
+The cycle check needs no graph library. Every `use crate::<other>` inside `core/src/<slice>/` is an edge, and `tsort` reports a graph with a loop on its error output:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
+if [ -n "$loops" ]; then
+  printf '%s\n' "$loops"
+  echo "slices import each other in a loop; move the shared part into its own slice (7.2)"
+  exit 1
+fi
+echo "slices: $(printf '%s\n' "$edges" | sed '/^$/d' | wc -l | tr -d ' ') edges, no cycle"
+```
+
+The same list of edges is the slice graph that section 22.4 uses to find the slices a change can affect.
+
+### 16.5. Lints and bans before scripts
+
+Some rules need no script, because a tool the workspace already runs can enforce them.
+
+**Clippy, per tier.** Clippy reads `clippy.toml` from the crate's own folder first, so each tier can forbid different things. Lints are switched on in `Cargo.toml`:
+
+```toml
+[workspace.lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+```
+
+```toml
+[lints]
+workspace = true
+```
+
+The first block goes into the workspace root, the second into `kit`, `store`, `drivers` and `core`. The `app` crate does not inherit them. A `clippy.toml` in the workspace root with `allow-unwrap-in-tests = true` and `allow-panic-in-tests = true` keeps tests readable. A `clippy.toml` in a crate's folder replaces the one in the root, so it repeats those two lines. A `clippy.toml` in `core` can list `disallowed-methods` and `disallowed-types`, for example `std::process::Command` and `std::sync::Mutex`, so that a process started from a slice or a lock inside an actor is a lint error, not a grep match.
+
+**`cargo-deny`, for the whole dependency graph.** `Cargo.toml` stops `use tauri::…` in `core`, but not a library that pulls `tauri` in through the back door. That leak is invisible in review, and it makes the tests of `core` compile the heaviest part of the application. `cargo-deny` checks the whole graph. In `deny.toml`:
+
+```toml
+[bans]
+deny = [
+  { crate = "tauri", wrappers = ["quayside", "tauri-plugin-shell", "tauri-plugin-dialog"] },
+]
+```
+
+`tauri` may then appear only as a direct dependency of the crates in `wrappers`: the `app` crate and the Tauri plugins it uses, which depend on `tauri` themselves. A plugin added to the application joins the list in the same pull request. Any other path to `tauri`, such as a library that `core` uses, is red.
+
+**Syntax instead of text.** The grep checks of 16.4 can be written as `ast-grep` rules. `ast-grep` matches the Rust syntax tree, so a comment or a string never matches, and an import split over several lines (`use crate::run::{logic::plan, model::Run};`) is still one import. A rule file per check, with `files` and `ignores` globs taken from the paths in 16.4, replaces `grep -E`. The baseline list (16.1) stays as it is: the rules produce the list of violations, and the same script subtracts the baseline.
 
 ## 17. Recipes
 
@@ -1056,12 +1154,14 @@ SLAT was designed in a team where much of the code is written by coding agents. 
 2. **A check beats a sentence in the prompt.** "Do not emit from core" in a prompt is followed most of the time. A red check is followed every time. Write the rule as a check first, and as a prompt line only when it cannot be checked.
 3. **The recipes are prompts.** Section 17 is written as numbered steps on purpose: paste the recipe into the task, and the agent produces files in the expected places in the expected order.
 
+Agents also change how a workspace is built. Several agents in several working copies are several cold builds of the same dependencies at once, which is the frozen laptop of section 19.2. Section 22.5 shows how they share one compile cache, and section 22.4 how each of them runs only the tests its change can affect.
+
 A section you can copy into your repository's contributor guide (`AGENTS.md`, `CLAUDE.md` or equivalent):
 
 ```markdown
-## Backend layout: SLAT 1.1
+## Backend layout: SLAT 1.2
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.1.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1074,6 +1174,7 @@ Reference: https://monoone.dev/blog/slat/
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
+- Before pushing, run the tests the change affects (SLAT section 22.4), then the checks.
 ```
 
 ## 19. Migrating an existing codebase
@@ -1113,7 +1214,7 @@ Two things are not free even here. Files that use `super::` or `pub(super)` chan
 | Hundreds of tests import old paths | Facades at the old paths. Do not move the tests in the same pull requests. |
 | Parallel branches conflict with `git mv` | Do the crate splits when the fewest branches are open. Every move is its own pull request. |
 | `pub(crate)` items are needed from another crate after the split | Widen them to `pub`. After the migration, review what can go back to `pub(crate)`. |
-| Compile time grows with the number of crates | At most six to eight crates. One heavy build at a time. |
+| Compile time grows with the number of crates | At most six to eight crates. One heavy build at a time. Measure with `cargo build --timings` before and after each split (22.6). |
 | A refactor quietly changes behaviour | `update` tests first, against today's behaviour. Moves and fixes in separate pull requests. |
 | A part of the code may not change at all (a critical feature, a frozen area) | It stays where it is and reaches the new layout only through facades. Facades are additive code. |
 
@@ -1348,6 +1449,7 @@ These numbers are illustrative. The shape of the change is what matters: every r
 - Events only from `app/<slice>/events.rs`.
 - One integration test target, `tests/it/`.
 - Checks from section 16 in CI from the first week, when the baselines are still empty.
+- Build settings from section 22: debug info, linker, one feature set, a compile cache in CI.
 - The SLAT section from 18 in the contributor guide.
 
 ### 21.2. Checklist for an existing project
@@ -1381,7 +1483,7 @@ The shared part becomes its own slice, and both depend on it. Cycles are never a
 Because a command that only translates needs no unit test of its own. Ten lines is enough to deserialize, call, and map; it is not enough to hide a decision.
 
 **Does SLAT slow down compilation?**
-Splitting into crates usually speeds up incremental builds, because a change in one slice does not rebuild `kit`, `store` or `drivers`. It can slow down a clean build slightly through extra link steps, which is why SLAT caps the number of crates.
+Splitting into crates usually speeds up incremental builds, because a change in one slice does not rebuild `kit`, `store` or `drivers`. It can slow down a clean build slightly through extra test binaries to link, which is why SLAT caps the number of crates. Section 22 lists the settings that matter more than the number of crates.
 
 **We only ship on macOS. Is section 12 worth it now?**
 Yes, the cheap part of it: `kit::paths`, contracts for the few system calls you already have, `unsupported.rs`, and the compile job on Linux and Windows. That costs days now and saves a search through the whole codebase later. The `linux.rs` and `windows.rs` files themselves wait until you decide to port.
@@ -1389,10 +1491,132 @@ Yes, the cheap part of it: `kit::paths`, contracts for the few system calls you 
 **How do coding agents cope with SLAT?**
 Well, because the layout is fixed and the important rules are checks, not advice. See section 18.
 
-## 22. Version history
+## 22. Build and test time
+
+*New in version 1.2.*
+
+The largest saving in SLAT comes from section 5: only `app` knows Tauri, so the tests of every other crate never compile Tauri and the web view behind it, the heaviest part of the application. The rest of the time goes to a few settings and habits, each a line or two of configuration. This section lists them in the order of what they usually save.
+
+Measure first. `cargo build --timings` writes an HTML report of every crate's compile time and of how many ran in parallel. Keep the report from before a change and compare.
+
+### 22.1. Where the time goes
+
+- **A library crate is compiled, not linked.** What gets linked is every binary, and in a test run every test binary.
+- **Each crate can have three kinds of test binaries:** its unit tests, each file directly in `tests/` (section 14.1 reduces that to one, `tests/it`), and its documentation examples. Since edition 2024, the documentation examples of a crate are built as one binary. A crate with no documentation examples sets `doctest = false` under `[lib]`.
+- **A test run below `app` never needs Tauri.** The everyday command is `cargo nextest run --workspace --exclude quayside`. Only the end-to-end tests of section 14 build the `app` crate.
+- **Debug information is a large share of the link time.** Most of it is never read.
+
+### 22.2. Build settings
+
+In the workspace root `Cargo.toml`:
+
+```toml
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+```
+
+Your own crates keep file and line numbers in backtraces; dependencies get no debug information. Raise it back to `debug = true` for one session when you need a debugger.
+
+The linker matters most for test binaries. On Linux for x86-64, Rust has used `rust-lld` by default since version 1.90. Other Linux targets can use `mold`. On macOS, the linker that comes with Xcode 15 and later is already fast, so leave it alone. On Windows, `rust-lld` is usually much faster than the default linker. In `.cargo/config.toml`:
+
+```toml
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+```
+
+Remove dependencies nobody uses: `cargo machete` lists them, and each one is compile time for nothing.
+
+### 22.3. One set of features
+
+Cargo builds a dependency once for every distinct set of features it is asked for. Two things in a SLAT workspace ask for different sets:
+
+1. **Different commands.** `cargo test --workspace` unifies the features of all members, `cargo test -p quayside-core` only those that `core` needs. Running both compiles `tokio`, `serde` and the rest twice. `cargo-hakari` fixes this: it keeps a generated `workspace-hack` crate that every member depends on, with the union of all features, so every command builds the dependencies the same way. `cargo hakari generate` updates it, and `cargo hakari verify` in CI fails when someone forgot.
+2. **Test features of your own crates.** The `fake` feature of 14.2 and `test-hooks` of section 10 change `drivers` and `core`, so every crate above them is compiled again when the feature switches. Prefer a data seam (14.2), which needs no feature. Where a feature is necessary, every test command switches it on the same way. Put that command in one place, in `.cargo/config.toml`:
+
+```toml
+[alias]
+t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
+```
+
+Everyone, including agents and CI, runs `cargo t` for the whole suite, and every narrower test command keeps the same `--features`. A test command with a different list of features is a second build.
+
+### 22.4. Run what a change can affect
+
+The fixed layout says which slice a file belongs to, and the slice graph from the cycle check (16.4) says which slices depend on it. Together they give each kind of change its own set of tests:
+
+| What changed | What runs |
+|---|---|
+| `logic.rs`, `model.rs`, `store.rs`, `service.rs` or `actor/` inside one slice, its `mod.rs` unchanged | the tests of that slice, and `cargo mutants --in-diff` (14.3) |
+| a slice's `mod.rs`, its public API | that slice and every slice that imports it |
+| `kit`, `store` or `drivers` | every crate that depends on it: `cargo nextest run -E 'rdeps(quayside-store)'` |
+| `drivers/src/platform/` | also the contract test (12.5); in CI, the platform job (16.3) |
+| only `app` | the end-to-end tests through the entry; nothing in `core` changed |
+| `Cargo.toml`, `Cargo.lock`, `.cargo/`, the toolchain file | everything |
+
+The tests of a slice are easy to select because their names start with the slice: unit tests live in `core/src/<slice>/`, so their names begin with `<slice>::`, and the modules of `tests/it` begin with the slice too (`recording_stops_on_time_limit`). A first version of the selection fits in a short script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+changed="$(git diff --name-only origin/main...HEAD)"
+core="crates/quayside-core/src"
+tests=(cargo nextest run --features quayside-drivers/fake --no-tests=fail)
+
+if grep -qE '(^|/)Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain|^crates/quayside-(kit|store|drivers)/' <<< "$changed"; then
+  exec "${tests[@]}" --workspace --exclude quayside
+fi
+if grep -qE "^$core/(lib\.rs|.*mod\.rs)$" <<< "$changed"; then
+  exec "${tests[@]}" -p quayside-core
+fi
+
+slices="$(sed -nE "s#^$core/([a-z_]+)/.*#\1#p" <<< "$changed" | sort -u | paste -sd'|' -)"
+if [ -z "$slices" ]; then
+  echo "no slice of core changed"
+  exit 0
+fi
+exec "${tests[@]}" -p quayside-core -E "test(/^($slices)(::|_)/)"
+```
+
+It is deliberately cautious: a change to any `mod.rs` runs all of `core` instead of following the slice graph. Replace that step with the graph when the suite of `core` gets slow.
+
+Selection is for speed, not for proof. Use three levels:
+
+| Where | What runs |
+|---|---|
+| on your machine and in an agent's loop | the selection above |
+| in CI on a pull request | every crate that depends on a changed crate (`rdeps`) |
+| on `main`, or in the merge queue | the whole suite |
+
+`--no-tests=fail` (14.1) stays on at every level, so a selection that matches nothing is red, not quietly green.
+
+### 22.5. One cache for many working copies
+
+Coding agents often work in parallel, each in its own working copy, and each working copy has its own `target/`. Without a shared cache, four agents compile the same dependencies four times at the same moment.
+
+Set `sccache` as the compiler wrapper, in the user's `~/.cargo/config.toml` or in the environment (`RUSTC_WRAPPER=sccache`). Its local cache is shared by every working copy on the machine, so dependencies compile once. `sccache` does not cache your own crates, which Cargo compiles incrementally, and that is fine: they are the small part.
+
+Limit how much of the machine one build may take with `CARGO_BUILD_JOBS`, for example half of the cores, so that a second build slows down instead of freezing the machine. The rule of section 19.2 still holds: one heavy build at a time.
+
+### 22.6. CI
+
+- **A cache in every Rust job**, including the platform job of 16.3. `Swatinem/rust-cache` keeps dependencies and the target folder between runs, keyed by `Cargo.lock`.
+- **Build once, test in parallel**, when the suite takes longer than a few minutes: `cargo nextest archive` builds the test binaries in one job, and several jobs run their part of them with `--partition hash:1/3`, `2/3`, `3/3`.
+- **A timings report on `main`.** `cargo build --timings` as an artifact of every build of `main`. When the bar of `core` keeps getting longer after a change to a single slice, that is the measurement section 5.3 asks for before a split.
+- **`cargo hakari verify`** and **`cargo deny check`** next to the checks of section 16. Both take seconds.
+
+## 23. Version history
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.2 | 25 October 2026 | Section 22, *Build and test time*: where compile time goes, build settings, one feature set, running the tests a change can affect, a shared compile cache for parallel working copies, CI. New subsections 14.3 (mutants in the diff), 14.4 (property tests for `update`) and 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checks for rules that had none: purity of `logic.rs`, a slice's `mod.rs`, slice cycles, the 10-line command, `unwrap()` and `panic!`. Data seams preferred over a `fake` feature. Corrected the cost of a crate (5.2, 5.3), `resolver = "3"` for edition 2024 (5.1), the cache step in the platform job (16.3). The version history moves from section 22 to section 23; sections 1 to 21 keep their numbers. |
 | 1.1 | 25 October 2026 | Section 12, *Platforms*: the `platform/` folder in `drivers`, platform contracts, prohibitions outside `platform/`, rules for paths, files and text, platform tests, CI compile job on Linux and Windows, porting recipe. Additions to tiers, enforcement, recipes and the decision tree. |
 | 1.0 | 24 October 2026 | First version: tiers, slices with fixed layers, import rules, data flows, actors, the application state as composition root, errors, testing, size limits, enforcement, recipes and migration. |
 

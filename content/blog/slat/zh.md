@@ -4,9 +4,9 @@ SLAT 是一种组织桌面应用后端的模式，适用于用 Rust 编写、以
 
 本页是完整的参考文档。它的写法让从未接触过 SLAT 的团队也能在新项目中采用它，或迁移现有项目，而无需向我们提问。文中包含规则、规则背后的原因、可以直接复制的代码、执行这些规则的检查，以及一个把混乱的应用逐步整理成形的完整示例。
 
-各节编号是固定的。遵循 SLAT 的仓库会在 `docs/slat/SLAT.md` 中保存一份使用相同编号的规则简版，因此像“第 17.8 节”这样的引用，在本页和仓库中指的是同一处内容。两者不一致时，在同一天内一起修正。
+各节编号是固定的。遵循 SLAT 的仓库会在 `docs/slat/SLAT.md` 中保存一份使用相同编号的规则简版，因此像“第 17.8 节”这样的引用，在本页和仓库中指的是同一处内容。两者不一致时，在同一天内一起修正。新的一节总是加在版本历史之前，版本历史始终位于最后。
 
-> **版本 1.1** · 2026年10月25日。1.1 版新增第 12 节 *平台*：如何把依赖操作系统的代码集中在一处，使日后移植到 Linux 或 Windows 只需在一个文件夹内完成。完整历史见第 22 节。
+> **版本 1.2** · 2026年10月25日。1.2 版新增第 22 节 *构建和测试时间*：SLAT 工作区中的编译时间花在哪里、能缩短它的设置，以及如何只运行一次改动可能影响到的测试。它还为本指南的每条规则都配上了检查，包括 `logic.rs` 的纯度、切片之间的循环和 10 行命令。完整历史见第 23 节。
 
 ## 1. SLAT 为什么存在
 
@@ -127,7 +127,7 @@ SLAT 的各个部分并不新。它组合了五个广为人知的思想，并把
 ```toml
 # Cargo.toml (workspace root)
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*", "src-tauri"]
 
 [workspace.dependencies]
@@ -171,11 +171,11 @@ tauri = { version = "2", features = [] }
 
 ### 5.2. 一开始建几个 crate
 
-最少两个：`core` 和 `app`。只有当其他层级的代码已经存在且干净（即不导入更高层级的任何东西）时，才把它们拆分出来。**禁止“为以后准备”的空 crate。** 它让每次构建多一个链接步骤，却没有任何价值。
+最少两个：`core` 和 `app`。只有当其他层级的代码已经存在且干净（即不导入更高层级的任何东西）时，才把它们拆分出来。**禁止“为以后准备”的空 crate。** 它让每次构建多运行一次编译器，让每次测试运行多链接它自己的测试二进制，却没有任何价值。
 
 ### 5.3. 何时拆分一个层级
 
-当 `core` 超过大约 60,000 行，或者修改一个切片后完整重建 `core` 变得痛苦时，把一组切片移到 `core-<group>` 中，例如 `quayside-core-run`。crate 总数最多保持在六到八个。每个 crate 都是一个单独的链接步骤，在笔记本电脑上，机器卡死的代价远高于更细拆分所节省的那几秒。
+当 `core` 超过大约 60,000 行，或者修改一个切片后完整重建 `core` 变得痛苦时，把一组切片移到 `core-<group>` 中，例如 `quayside-core-run`。crate 总数最多保持在六到八个。库 crate 不会被链接，但每个 crate 都带有自己的测试二进制，而每个测试二进制都要单独链接（第 22.1 节）。在笔记本电脑上，机器卡死的代价远高于更细拆分所节省的那几秒。要靠测量来决定，而不是靠感觉：`cargo build --timings` 会显示 `core` 是否真的是瓶颈（第 22.6 节）。
 
 ### 5.4. 兼容性例外
 
@@ -628,7 +628,7 @@ pub async fn start(deps: &Deps, request: StartRequest) -> Result<Outcome<RunId>,
 }
 ```
 
-调用方写成 `StartRequest { workflow, budget: Some(limit), ..Default::default() }`。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。单靠 `cfg(test)` 只覆盖该 crate 自己的单元测试，因此集成测试和其他 crate 通过 `test-hooks` feature 启用这些字段，思路与 14.2 中的伪驱动相同。
+调用方写成 `StartRequest { workflow, budget: Some(limit), ..Default::default() }`。新增一个选项只是新增一个字段，而不是新增一个函数并修改每个调用方。仅用于测试的注入点（`faults`、`hooks`）是只在测试构建中存在的字段。单靠 `cfg(test)` 只覆盖该 crate 自己的单元测试，因此集成测试和其他 crate 通过 `test-hooks` feature 启用这些字段，思路与 14.2 中的伪驱动相同。在每个测试命令中都以同样的方式启用它（第 22.3 节）；否则，每次在启用该 feature 的构建和未启用的构建之间切换，都会重新编译这个 crate 以及它之上的一切。
 
 ## 11. AppState：组合根
 
@@ -877,12 +877,48 @@ cargo nextest run --test it recording_stops_on_time_limit::
 
 ### 14.2. 不用 trait 的假驱动
 
-测试需要一个不启动真实进程的驱动。SLAT 禁止只有一个实现的 trait，而假实现不算第二个真实实现。有两种做法可以遵守这条规则：
+测试需要一个不启动真实进程的驱动。SLAT 禁止只有一个实现的 trait，而假实现不算第二个真实实现。有两种做法可以遵守这条规则。优先选择第一种：feature 会改变 `drivers` 及其之上每个 crate 的编译方式，因此启用它的测试构建和不启用它的应用构建是两套独立的构建产物（第 22.3 节）。数据接缝则完全不增加编译时间。
 
 - **数据接缝。** 服务接收的是驱动的*输出*（一个值或一个通道），而不是驱动本身。测试把行发送到通道中。
 - **测试构建。** `drivers` 暴露 `#[cfg(any(test, feature = "fake"))] pub mod fake;`，其中的函数与真实模块相同，测试 crate 启用 `fake` feature。
 
 当出现第二个真实实现时（第二个提供商、第二个平台），才是引入 trait 的时机。
+
+### 14.3. 差异中的变异测试
+
+一个通过的测试，只有在面对错误代码时会失败，才证明了某些东西。这就是把第 16.2 节应用到测试上。`cargo-mutants` 会修改代码（翻转一个条件、替换一个返回值、删除一条语句），并报告每一处没有被任何测试发现的修改。在 pull request 改动的那些行上运行它，而不是在整个工作区上：
+
+```bash
+git diff origin/main...HEAD > changes.diff
+cargo mutants --in-diff changes.diff --package quayside-core
+```
+
+`logic.rs` 和 `update.rs` 是这样做收益最大的地方。它们是纯的，所以测试在微秒级完成，而那里存活下来的变异就是一条没人检查的业务规则。存活的变异要用测试来修复，绝不用排除项来修复。
+
+### 14.4. `update` 的属性测试
+
+一个 `update` 测试检查的是一段消息脚本。属性测试则针对必须始终成立的规则，检查成千上万段随机脚本。使用 `proptest` 生成一串 `Msg` 值，并在每一步之后断言状态的不变量：
+
+```rust
+proptest! {
+    #[test]
+    fn a_stale_generation_never_changes_the_phase(script in messages(64)) {
+        let mut state = State::default();
+        for msg in script {
+            let generation_before = state.generation;
+            let phase_before = state.phase.clone();
+            let stale = msg.generation().is_some_and(|g| g != generation_before);
+            update(&mut state, msg);
+            prop_assert!(state.generation >= generation_before);
+            if stale {
+                prop_assert_eq!(&state.phase, &phase_before);
+            }
+        }
+    }
+}
+```
+
+`messages(n)` 是测试模块中的一个策略（strategy），用来构建随机的 `Msg` 值；`Msg::generation()` 是一个小辅助函数，返回消息携带的代数。第 20.2 节中的泄漏正是这类测试能够自己找出的 bug：没有人需要事先想到引发它的消息顺序。
 
 ## 15. 规模上限
 
@@ -902,7 +938,7 @@ cargo nextest run --test it recording_stops_on_time_limit::
 
 | 规则 | 由谁执行 |
 |---|---|
-| 只有 `app` 知道 Tauri | `Cargo.toml`（其他地方没有 `tauri` 依赖） |
+| 只有 `app` 知道 Tauri | `Cargo.toml`（其他地方没有 `tauri` 依赖）；针对传递依赖使用 `cargo-deny`（16.5） |
 | 层级只向下依赖 | `Cargo.toml` |
 | 只有 `store` 打开写连接 | grep 检查：`Connection::open` 只出现在 `store` crate 中。切片的 `store.rs` 文件会使用 `rusqlite` 类型，所以仅靠依赖关系不够。 |
 | `#[tauri::command]` 只在 `app/*/commands.rs` 中 | grep 检查 |
@@ -910,7 +946,11 @@ cargo nextest run --test it recording_stops_on_time_limit::
 | `emit` 只在 `app/*/events.rs` 中 | grep 检查 |
 | 切片之间没有深层导入 | 检查来自其他切片的 `crate::<a>::<layer>::` |
 | `core` 中没有带状态的 `static` | grep 检查 `static .*(Mutex|RwLock)` |
-| `update.rs` 没有 I/O | 检查：`update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::` |
+| `logic.rs` 和 `update.rs` 没有 I/O | 检查：`logic.rs`、`logic/` 和 `update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::`、`drivers::` |
+| 切片的 `mod.rs` 只包含 `mod …;` 和 `pub use …;` | 对 `core/src/` 下每个 `mod.rs` 的检查 |
+| 切片之间没有循环 | 一个根据导入构建切片图并对其排序的检查 |
+| Tauri 命令最多 10 行 | 对 `app/*/commands.rs` 的检查 |
+| `core`、`store`、`drivers` 中除测试外没有 `unwrap()` 和 `panic!` | Clippy lint `unwrap_used` 和 `panic`（16.5） |
 | 操作系统相关代码只在 `drivers/src/platform/` 和 `app/src/platform.rs` 中 | 使用 12.3 中列表的 grep 检查 |
 | 除 `app` 外的 crate 在每个平台上都能编译 | 在 Ubuntu 和 Windows CI runner 上运行 `cargo check` |
 | 规模上限 | 一个带基线列表的检查，列表只能缩短 |
@@ -947,7 +987,7 @@ echo "emit: $(printf '%s\n' "$found" | sed '/^$/d' | wc -l | tr -d ' ') files on
 
 在信任一个检查之前，先植入一个真实的违规，看着它变红，然后再删掉。从未变红过的检查从未被测试过。
 
-SLAT 中的 grep 检查查找的是被禁止的代码，所以注释中的匹配会让它们变红，而不是变绿。这虽然烦人，但很安全，修复办法是删掉那段死代码。危险的是要求某个字符串必须存在的检查：它在注释上也会通过。这类规则要通过运行代码来证明，而不是通过读文本。
+SLAT 中的 grep 检查查找的是被禁止的代码，所以注释中的匹配会让它们变红，而不是变绿。这虽然烦人，但很安全，修复办法是删掉那段死代码。读取语法树的检查（16.5）没有这个问题。危险的是要求某个字符串必须存在的检查：它在注释上也会通过。这类规则要通过运行代码来证明，而不是通过读文本。
 
 ### 16.3. CI 中的平台任务
 
@@ -963,10 +1003,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --exclude quayside --all-targets
 ```
 
-在真实仓库中，请把 action 版本固定到完整的提交哈希。这个任务只做编译；在产品尚不支持的平台上不运行测试，所以成本很低。
+在真实仓库中，请把 action 版本固定到完整的提交哈希。这个任务只做编译；在产品尚不支持的平台上不运行测试，所以成本很低。缓存步骤让它保持低成本：没有它，每个 pull request 都要在两个操作系统上从零编译所有依赖。
 
 ### 16.4. 全套检查
 
@@ -977,9 +1018,67 @@ jobs:
 | `checks/slat-emit.sh` | `emit` 只在 `src-tauri/src/*/events.rs` 中 |
 | `checks/slat-deep-imports.sh` | 没有来自其他切片的 `crate::<slice>::<layer>::` |
 | `checks/slat-static-state.sh` | `crates/*-core*` 中没有 `static … Mutex|RwLock` |
-| `checks/slat-pure-update.sh` | `update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::` |
+| `checks/slat-pure.sh` | `logic.rs`、`logic/` 和 `update.rs` 中没有 `async`、`tokio::`、`std::fs`、`store::`、`drivers::` |
+| `checks/slat-slice-mod.sh` | 切片的 `mod.rs` 只包含 `mod …;` 和 `pub use …;` |
+| `checks/slat-slice-cycles.sh` | 切片之间没有循环 |
+| `checks/slat-command-size.sh` | 每个 `#[tauri::command]` 最多 10 行 |
 | `checks/slat-platform.sh` | `platform/` 之外适用 12.3 中的禁止项 |
 | `checks/slat-size.sh` | 基线中超过 1,500 行的文件只能缩小 |
+
+循环检查不需要图库。`core/src/<slice>/` 中的每个 `use crate::<other>` 都是一条边，而 `tsort` 会在错误输出中报告带环的图：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+loops="$(printf '%s\n' "$edges" | tsort 2>&1 > /dev/null || true)"
+if [ -n "$loops" ]; then
+  printf '%s\n' "$loops"
+  echo "slices import each other in a loop; move the shared part into its own slice (7.2)"
+  exit 1
+fi
+echo "slices: $(printf '%s\n' "$edges" | sed '/^$/d' | wc -l | tr -d ' ') edges, no cycle"
+```
+
+同一份边的列表，就是第 22.4 节用来找出一次改动可能影响哪些切片的切片图。
+
+### 16.5. 先用 lint 和禁令，再写脚本
+
+有些规则不需要脚本，因为工作区已经在运行的工具就能执行它们。
+
+**Clippy，按层级配置。** Clippy 首先读取 crate 自己文件夹中的 `clippy.toml`，因此每个层级可以禁止不同的东西。lint 在 `Cargo.toml` 中开启：
+
+```toml
+[workspace.lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+```
+
+```toml
+[lints]
+workspace = true
+```
+
+第一段放在工作区根目录，第二段放进 `kit`、`store`、`drivers` 和 `core`。`app` crate 不继承它们。工作区根目录中一个包含 `allow-unwrap-in-tests = true` 和 `allow-panic-in-tests = true` 的 `clippy.toml` 让测试保持可读。crate 文件夹中的 `clippy.toml` 会取代根目录中的那个，所以它要重复这两行。`core` 中的 `clippy.toml` 可以列出 `disallowed-methods` 和 `disallowed-types`，例如 `std::process::Command` 和 `std::sync::Mutex`，这样从切片中启动进程或在 Actor 内部使用锁，就会成为 lint 错误，而不是 grep 匹配。
+
+**`cargo-deny`，针对整个依赖图。** `Cargo.toml` 能阻止 `core` 中的 `use tauri::…`，却阻止不了一个从后门把 `tauri` 拉进来的库。这种泄漏在评审中看不见，而且会让 `core` 的测试去编译应用中最重的部分。`cargo-deny` 检查整个依赖图。在 `deny.toml` 中：
+
+```toml
+[bans]
+deny = [
+  { crate = "tauri", wrappers = ["quayside", "tauri-plugin-shell", "tauri-plugin-dialog"] },
+]
+```
+
+这样，`tauri` 只能作为 `wrappers` 中那些 crate 的直接依赖出现：`app` crate，以及它使用的 Tauri 插件（它们本身依赖 `tauri`）。给应用新增插件时，在同一个 pull request 中把它加入列表。通往 `tauri` 的任何其他路径，例如 `core` 使用的某个库，都会显示为红色。
+
+**用语法代替文本。** 16.4 中的 grep 检查可以写成 `ast-grep` 规则。`ast-grep` 匹配的是 Rust 语法树，所以注释或字符串永远不会匹配，而拆成多行的导入（`use crate::run::{logic::plan, model::Run};`）仍然是一个导入。每个检查一个规则文件，其中的 `files` 和 `ignores` glob 取自 16.4 中的路径，以此取代 `grep -E`。基线列表（16.1）保持不变：规则产出违规列表，同一个脚本再减去基线。
+
 ## 17. 操作配方
 
 每个配方都从一个在旧代码上失败的测试开始，而且要失败在断言上，而不是编译上。在 Rust 中，先用 `todo!()` 写出签名，这样测试能够编译，并因为正确的原因失败。
@@ -1054,12 +1153,14 @@ SLAT 是在一个大量代码由编码智能体编写的团队中设计出来的
 2. **检查胜过提示词里的一句话。** 提示词里的“不要从 core 发出事件”多数时候会被遵守。红色的检查每次都会被遵守。先把规则写成检查，只有在无法检查时才写成提示词中的一行。
 3. **配方就是提示词。** 第 17 节有意写成编号步骤：把配方粘贴到任务中，智能体就会按预期的顺序在预期的位置生成文件。
 
+智能体也改变了工作区的构建方式。多个智能体在多个工作副本中工作，就是同时对相同的依赖进行多次冷构建，这正是第 19.2 节说的笔记本电脑卡死。第 22.5 节说明它们如何共享一个编译缓存，第 22.4 节说明每个智能体如何只运行它的改动可能影响到的测试。
+
 一段可以复制到你仓库贡献者指南（`AGENTS.md`、`CLAUDE.md` 或类似文件）中的内容：
 
 ```markdown
-## Backend layout: SLAT 1.1
+## Backend layout: SLAT 1.2
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.1.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1072,6 +1173,7 @@ Reference: https://monoone.dev/blog/slat/
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
+- Before pushing, run the tests the change affects (SLAT section 22.4), then the checks.
 ```
 
 ## 19. 迁移现有代码库
@@ -1111,7 +1213,7 @@ Reference: https://monoone.dev/blog/slat/
 | 数百个测试导入旧路径 | 在旧路径上放门面。不要在同一批 pull request 中移动测试。 |
 | 并行分支与 `git mv` 冲突 | 在未合并分支最少的时候拆分 crate。每次移动都是独立的 pull request。 |
 | 拆分后另一个 crate 需要使用 `pub(crate)` 项 | 把它们放宽为 `pub`。迁移完成后，再检查哪些可以改回 `pub(crate)`。 |
-| 编译时间随 crate 数量增加 | 最多六到八个 crate。同一时间只跑一个重型构建。 |
+| 编译时间随 crate 数量增加 | 最多六到八个 crate。同一时间只跑一个重型构建。每次拆分前后用 `cargo build --timings` 测量（22.6）。 |
 | 重构悄悄改变了行为 | 先针对当前行为写 `update` 测试。移动和修复放在不同的 pull request 中。 |
 | 有一部分代码完全不能改（关键功能、冻结区域） | 它留在原处，只通过门面接入新布局。门面是纯新增的代码。 |
 
@@ -1346,6 +1448,7 @@ pub async fn recording_stop(
 - 事件只从 `app/<slice>/events.rs` 发出。
 - 一个集成测试目标：`tests/it/`。
 - 从第一周起就在 CI 中运行第 16 节的检查，那时基线还是空的。
+- 第 22 节中的构建设置：调试信息、链接器、一套 feature、CI 中的编译缓存。
 - 在贡献者指南中加入第 18 节的 SLAT 段落。
 
 ### 21.2. 现有项目清单
@@ -1379,7 +1482,7 @@ pub async fn recording_stop(
 因为只做转换的命令不需要自己的单元测试。十行足以完成反序列化、调用和映射，却不足以藏下一个决策。
 
 **SLAT 会拖慢编译吗？**
-拆分为多个 crate 通常会加快增量构建，因为修改一个切片不会重建 `kit`、`store` 或 `drivers`。由于多了链接步骤，干净构建可能会稍慢一些，这也是 SLAT 限制 crate 数量的原因。
+拆分为多个 crate 通常会加快增量构建，因为修改一个切片不会重建 `kit`、`store` 或 `drivers`。由于要链接更多的测试二进制，干净构建可能会稍慢一些，这也是 SLAT 限制 crate 数量的原因。第 22 节列出了比 crate 数量更重要的设置。
 
 **我们只在 macOS 上发布。现在就做第 12 节值得吗？**
 值得，做其中成本低的部分：`kit::paths`、为你已有的少数系统调用定义契约、`unsupported.rs`，以及在 Linux 和 Windows 上的编译任务。这现在只需要几天，却能省去日后搜遍整个代码库的工作。`linux.rs` 和 `windows.rs` 文件本身，等你决定移植时再写。
@@ -1387,10 +1490,132 @@ pub async fn recording_stop(
 **编码智能体如何应对 SLAT？**
 应对得很好，因为布局是固定的，重要的规则是检查而不是建议。见第 18 节。
 
-## 22. 版本历史
+## 22. 构建和测试时间
+
+*1.2 版新增。*
+
+SLAT 中最大的节省来自第 5 节：只有 `app` 知道 Tauri，因此其他每个 crate 的测试都从不编译 Tauri 及其背后的 web view，也就是应用中最重的部分。其余的时间花在少数几项设置和习惯上，每项只需一两行配置。本节按它们通常能节省的时间排序列出。
+
+先测量。`cargo build --timings` 会生成一份 HTML 报告，列出每个 crate 的编译时间，以及有多少个 crate 在并行编译。保留改动之前的报告，用来对比。
+
+### 22.1. 时间花在哪里
+
+- **库 crate 只编译，不链接。** 被链接的是每个二进制，在测试运行中则是每个测试二进制。
+- **每个 crate 可以有三类测试二进制：** 它的单元测试、直接位于 `tests/` 下的每个文件（第 14.1 节把它减为一个，`tests/it`），以及它的文档示例。从 edition 2024 起，一个 crate 的文档示例会构建为一个二进制。没有文档示例的 crate 在 `[lib]` 下设置 `doctest = false`。
+- **`app` 以下的测试运行从不需要 Tauri。** 日常命令是 `cargo nextest run --workspace --exclude quayside`。只有第 14 节的端到端测试才会构建 `app` crate。
+- **调试信息占链接时间的很大一部分。** 其中大部分从来没人读。
+
+### 22.2. 构建设置
+
+在工作区根目录的 `Cargo.toml` 中：
+
+```toml
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+```
+
+你自己的 crate 在回溯中保留文件名和行号；依赖不带调试信息。需要调试器时，在一次会话中把它改回 `debug = true`。
+
+链接器对测试二进制最重要。在 x86-64 的 Linux 上，Rust 从 1.90 版起默认使用 `rust-lld`。其他 Linux 目标可以使用 `mold`。在 macOS 上，Xcode 15 及更高版本自带的链接器已经很快，保持不动即可。在 Windows 上，`rust-lld` 通常比默认链接器快得多。在 `.cargo/config.toml` 中：
+
+```toml
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+```
+
+删除没人使用的依赖：`cargo machete` 会列出它们，每一个都是白白花掉的编译时间。
+
+### 22.3. 一套 feature
+
+对于被请求的每一组不同的 feature，Cargo 都会把依赖构建一次。SLAT 工作区中有两种东西会请求不同的组合：
+
+1. **不同的命令。** `cargo test --workspace` 会合并所有成员的 feature，`cargo test -p quayside-core` 只合并 `core` 需要的那些。两者都运行，就会把 `tokio`、`serde` 和其余依赖编译两次。`cargo-hakari` 解决这个问题：它维护一个生成出来的 `workspace-hack` crate，每个成员都依赖它，其中包含所有 feature 的并集，这样每个命令都以相同的方式构建依赖。`cargo hakari generate` 更新它，CI 中的 `cargo hakari verify` 会在有人忘记更新时失败。
+2. **你自己 crate 的测试 feature。** 14.2 中的 `fake` feature 和第 10 节的 `test-hooks` 会改变 `drivers` 和 `core`，因此 feature 切换时，它们之上的每个 crate 都要重新编译。优先使用数据接缝（14.2），它不需要 feature。确实需要 feature 时，每个测试命令都以同样的方式启用它。把这个命令放在一个地方，即 `.cargo/config.toml` 中：
+
+```toml
+[alias]
+t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
+```
+
+所有人，包括智能体和 CI，都运行 `cargo t` 来跑整个测试套件，每个范围更窄的测试命令都保持相同的 `--features`。feature 列表不同的测试命令就是第二次构建。
+
+### 22.4. 只运行改动可能影响到的测试
+
+固定的布局说明一个文件属于哪个切片，而循环检查（16.4）中的切片图说明哪些切片依赖它。两者结合，就为每类改动给出了各自的一组测试：
+
+| 改动了什么 | 运行什么 |
+|---|---|
+| 一个切片内的 `logic.rs`、`model.rs`、`store.rs`、`service.rs` 或 `actor/`，其 `mod.rs` 未变 | 该切片的测试，以及 `cargo mutants --in-diff`（14.3） |
+| 切片的 `mod.rs`，即它的公共 API | 该切片以及导入它的每个切片 |
+| `kit`、`store` 或 `drivers` | 依赖它的每个 crate：`cargo nextest run -E 'rdeps(quayside-store)'` |
+| `drivers/src/platform/` | 另外运行契约测试（12.5）；在 CI 中运行平台任务（16.3） |
+| 只有 `app` | 通过入口的端到端测试；`core` 中没有任何改动 |
+| `Cargo.toml`、`Cargo.lock`、`.cargo/`、工具链文件 | 全部 |
+
+切片的测试很容易选出来，因为它们的名字以切片名开头：单元测试位于 `core/src/<slice>/`，所以名字以 `<slice>::` 开头，而 `tests/it` 的模块也以切片名开头（`recording_stops_on_time_limit`）。第一版的选择逻辑用一个短脚本就能写完：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+changed="$(git diff --name-only origin/main...HEAD)"
+core="crates/quayside-core/src"
+tests=(cargo nextest run --features quayside-drivers/fake --no-tests=fail)
+
+if grep -qE '(^|/)Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain|^crates/quayside-(kit|store|drivers)/' <<< "$changed"; then
+  exec "${tests[@]}" --workspace --exclude quayside
+fi
+if grep -qE "^$core/(lib\.rs|.*mod\.rs)$" <<< "$changed"; then
+  exec "${tests[@]}" -p quayside-core
+fi
+
+slices="$(sed -nE "s#^$core/([a-z_]+)/.*#\1#p" <<< "$changed" | sort -u | paste -sd'|' -)"
+if [ -z "$slices" ]; then
+  echo "no slice of core changed"
+  exit 0
+fi
+exec "${tests[@]}" -p quayside-core -E "test(/^($slices)(::|_)/)"
+```
+
+它有意保守：任何 `mod.rs` 的改动都会运行整个 `core`，而不是沿着切片图选择。当 `core` 的测试套件变慢时，再把这一步换成切片图。
+
+选择是为了速度，不是为了证明。使用三个级别：
+
+| 在哪里 | 运行什么 |
+|---|---|
+| 在你的机器上和智能体的循环中 | 上面的选择 |
+| 在 pull request 的 CI 中 | 依赖于被改动 crate 的每个 crate（`rdeps`） |
+| 在 `main` 上，或在合并队列中 | 整个测试套件 |
+
+`--no-tests=fail`（14.1）在每个级别都保持开启，这样一个什么都没匹配到的选择会显示为红色，而不是悄悄变绿。
+
+### 22.5. 多个工作副本共用一个缓存
+
+编码智能体经常并行工作，每个都在自己的工作副本中，而每个工作副本都有自己的 `target/`。没有共享缓存时，四个智能体会在同一时刻把相同的依赖编译四次。
+
+把 `sccache` 设为编译器包装器，写在用户的 `~/.cargo/config.toml` 中或环境变量里（`RUSTC_WRAPPER=sccache`）。它的本地缓存由这台机器上的每个工作副本共享，因此依赖只编译一次。`sccache` 不缓存你自己的 crate，它们由 Cargo 增量编译，这没有问题：它们是小的那部分。
+
+用 `CARGO_BUILD_JOBS` 限制一次构建能占用多少机器资源，例如一半的核心，这样第二个构建只会变慢，而不会让机器卡死。第 19.2 节的规则仍然成立：同一时间只跑一个重型构建。
+
+### 22.6. CI
+
+- **每个 Rust 任务都有缓存**，包括 16.3 中的平台任务。`Swatinem/rust-cache` 在多次运行之间保留依赖和 target 文件夹，以 `Cargo.lock` 为键。
+- **构建一次，并行测试**，当测试套件需要超过几分钟时：`cargo nextest archive` 在一个任务中构建测试二进制，多个任务用 `--partition hash:1/3`、`2/3`、`3/3` 各自运行其中一部分。
+- **`main` 上的时间报告。** 把 `cargo build --timings` 作为 `main` 每次构建的产物。如果在只改动一个切片后，`core` 的条形图不断变长，这就是第 5.3 节在拆分前要求的测量。
+- **`cargo hakari verify`** 和 **`cargo deny check`** 与第 16 节的检查放在一起。两者都只需几秒。
+
+## 23. 版本历史
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| 1.2 | 2026年10月25日 | 第 22 节 *构建和测试时间*：编译时间花在哪里、构建设置、一套 feature、运行改动可能影响到的测试、为并行工作副本共享的编译缓存、CI。新增小节 14.3（差异中的变异测试）、14.4（`update` 的属性测试）和 16.5（Clippy、`cargo-deny`、`ast-grep`）。为此前没有检查的规则加上检查：`logic.rs` 的纯度、切片的 `mod.rs`、切片之间的循环、10 行命令、`unwrap()` 和 `panic!`。优先使用数据接缝，而不是 `fake` feature。更正了 crate 的成本（5.2、5.3）、edition 2024 使用 `resolver = "3"`（5.1）、平台任务中的缓存步骤（16.3）。版本历史从第 22 节移到第 23 节；第 1 到 21 节保持原有编号。 |
 | 1.1 | 2026年10月25日 | 第 12 节 *平台*：`drivers` 中的 `platform/` 文件夹、平台契约、`platform/` 之外的禁止项、路径、文件和文本规则、平台测试、Linux 和 Windows 上的 CI 编译任务、移植配方。补充了层级、执行机制、配方和决策树的内容。 |
 | 1.0 | 2026年10月24日 | 第一版：层级、带固定层的切片、导入规则、数据流、Actor、作为组合根的应用状态、错误、测试、规模上限、执行机制、配方和迁移。 |
 
