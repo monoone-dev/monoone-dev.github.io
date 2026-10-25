@@ -6,7 +6,7 @@ Cette page est la référence complète. Elle est écrite pour qu'une équipe qu
 
 Les numéros de section sont stables. Un dépôt qui suit SLAT garde une copie courte des règles dans `docs/slat/SLAT.md`, avec les mêmes numéros, si bien qu'une référence comme « section 17.8 » désigne la même chose sur cette page et dans le dépôt. Quand les deux divergent, les deux sont corrigés le jour même. Une nouvelle section s'ajoute juste avant l'historique des versions, qui reste toujours en dernier.
 
-> **Version 1.2** · 25 octobre 2026. La version 1.2 ajoute la section 22, *Temps de build et de test* : où part le temps de compilation dans un workspace SLAT, les réglages qui le réduisent, et comment lancer uniquement les tests qu'un changement peut affecter. Elle donne aussi un check à chaque règle du guide, y compris la pureté de `logic.rs`, les cycles entre slices et la commande de 10 lignes. L'historique complet se trouve en section 23.
+> **Version 1.2** · 25 octobre 2026. La version 1.2 ajoute la section 22, *Temps de build et de test* : où part le temps de compilation dans un workspace SLAT, les réglages qui le réduisent, comment lancer uniquement les tests qu'un changement peut affecter, et ce qui fait repartir un build de zéro alors qu'il ne le devrait pas. Elle donne aussi un check à chaque règle du guide, y compris la pureté de `logic.rs`, les cycles entre slices et la commande de 10 lignes. L'historique complet se trouve en section 23.
 
 ## 1. Pourquoi SLAT existe
 
@@ -176,6 +176,8 @@ Le minimum est deux : `core` et `app`. Ne séparez les autres tiers que lorsque 
 ### 5.3. Quand diviser un tier
 
 Quand `core` dépasse environ 60 000 lignes, ou quand reconstruire tout `core` après une modification d'une seule slice devient pénible, déplacez un groupe de slices dans `core-<group>`, par exemple `quayside-core-run`. Restez à six à huit crates au maximum. Une crate de bibliothèque ne passe pas par l'édition de liens, mais chaque crate apporte ses propres binaires de test, et chacun d'eux est lié séparément (section 22.1). Sur un portable, une machine figée coûte plus cher que les secondes qu'un découpage plus fin ferait gagner. Décidez sur une mesure, pas sur une impression : `cargo build --timings` montre si `core` est vraiment le goulot d'étranglement (section 22.6).
+
+**Divisez selon le poids de compilation, pas seulement selon les lignes.** Un driver qui enveloppe une grosse bibliothèque native ou d'apprentissage automatique (reconnaissance vocale, moteur d'inférence, base de données compilée depuis des sources C) est souvent plus lourd que Tauri lui-même. Dans `drivers`, il serait compilé et lié dans chaque binaire de test de `core`, parce que `core` dépend de `drivers`. Donnez à un tel driver sa propre crate, `<product>-drivers-<name>`, dont `core` ne dépend pas. `app` en dépend et passe sa sortie à la slice par une jointure par les données (14.2), ou bien le driver tourne comme un processus auxiliaire séparé que `app` démarre. Les tests de `core` ne le compilent alors jamais. `cargo-deny` le garantit : `{ crate = "quayside-drivers-speech", wrappers = ["quayside"] }` dans `deny.toml` (16.5) rend rouge tout autre chemin vers cette crate.
 
 ### 5.4. Exception de compatibilité
 
@@ -876,6 +878,8 @@ cargo nextest run --test it recording_stops_on_time_limit::
 
 Lancez avec `--no-tests=fail`, pour qu'un filtre qui ne correspond à rien soit rouge au lieu d'être vert en silence.
 
+Les helpers partagés par les tests sont un module de la même cible, `tests/it/support/`. Un fichier de helpers placé directement dans `tests/` est un binaire de plus à lier.
+
 ### 14.2. Un faux driver sans trait
 
 Un test a besoin d'un driver qui ne lance pas de vrais processus. SLAT interdit un trait à une seule implémentation, et un faux ne compte pas comme une deuxième implémentation réelle. Deux options respectent la règle. Préférez la première : une feature change la façon dont `drivers` et chaque crate au-dessus se compilent, si bien qu'un build de test avec elle et un build de l'application sans elle sont deux ensembles d'artefacts séparés (section 22.3). Une jointure par les données ne coûte aucun temps de compilation.
@@ -1154,7 +1158,7 @@ SLAT a été conçu dans une équipe où une grande partie du code est écrite p
 2. **Un check vaut mieux qu'une phrase dans le prompt.** « N'émets pas depuis core » dans un prompt est respecté la plupart du temps. Un check rouge est respecté à chaque fois. Écrivez d'abord la règle sous forme de check, et sous forme de ligne de prompt seulement si elle ne peut pas être vérifiée.
 3. **Les recettes sont des prompts.** La section 17 est volontairement écrite en étapes numérotées : collez la recette dans la tâche, et l'agent produit les fichiers aux endroits attendus, dans l'ordre attendu.
 
-Les agents changent aussi la façon dont un workspace se compile. Plusieurs agents dans plusieurs copies de travail, ce sont plusieurs builds à froid des mêmes dépendances en même temps : c'est le portable figé de la section 19.2. La section 22.5 montre comment ils partagent un seul cache de compilation, et la section 22.4 comment chacun lance uniquement les tests que son changement peut affecter.
+Les agents changent aussi la façon dont un workspace se compile. Plusieurs agents dans plusieurs copies de travail, ce sont plusieurs builds à froid des mêmes dépendances en même temps : c'est le portable figé de la section 19.2. La section 22.5 montre comment chaque copie de travail démarre à chaud sans partager un dossier `target/` avec une autre, et la section 22.4 comment chacun lance uniquement les tests que son changement peut affecter.
 
 Une section à copier dans le guide de contribution de votre dépôt (`AGENTS.md`, `CLAUDE.md` ou équivalent) :
 
@@ -1175,6 +1179,8 @@ Reference: https://monoone.dev/blog/slat/
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
   report it instead.
 - Before pushing, run the tests the change affects (SLAT section 22.4), then the checks.
+- Every working copy has its own `target/`. Never point two copies at one
+  folder (SLAT section 22.5).
 ```
 
 ## 19. Migrer une base de code existante
@@ -1449,7 +1455,8 @@ Ces chiffres sont illustratifs. C'est la forme du changement qui compte : chaque
 - Des événements uniquement depuis `app/<slice>/events.rs`.
 - Une seule cible de tests d'intégration, `tests/it/`.
 - Les checks de la section 16 en CI dès la première semaine, quand les listes de référence sont encore vides.
-- Les réglages de build de la section 22 : informations de débogage, éditeur de liens, un seul ensemble de features, un cache de compilation en CI.
+- Les réglages de build de la section 22 : informations de débogage avec `strip = false`, éditeur de liens, un seul ensemble de features, `.taurignore`, un cache de compilation en CI écrit uniquement depuis `main`.
+- Les bibliothèques natives lourdes dans une crate de driver dont `core` ne dépend pas (5.3).
 - La section SLAT de la partie 18 dans le guide de contribution.
 
 ### 21.2. Liste de contrôle pour un projet existant
@@ -1495,7 +1502,7 @@ Bien, parce que l'organisation est fixe et que les règles importantes sont des 
 
 *Nouveau dans la version 1.2.*
 
-Le plus gros gain de SLAT vient de la section 5 : seule `app` connaît Tauri, donc les tests de toutes les autres crates ne compilent jamais Tauri ni la web view derrière lui, la partie la plus lourde de l'application. Le reste du temps part dans quelques réglages et habitudes, chacun d'une ligne ou deux de configuration. Cette section les liste dans l'ordre de ce qu'ils font gagner en général.
+Le plus gros gain de SLAT vient de la section 5 : seule `app` connaît Tauri, donc les tests de toutes les autres crates ne compilent jamais Tauri ni la web view derrière lui. Le deuxième vient de 5.3 : une bibliothèque native lourde vit dans une crate de driver dont `core` ne dépend pas, donc les tests de `core` ne la compilent jamais non plus. Le reste du temps part dans quelques réglages et habitudes, chacun d'une ligne ou deux de configuration. Cette section les liste dans l'ordre de ce qu'ils font gagner en général, et se termine par ce qui fait repartir un build de zéro alors qu'il ne le devrait pas.
 
 Mesurez d'abord. `cargo build --timings` écrit un rapport HTML du temps de compilation de chaque crate et du nombre de compilations menées en parallèle. Gardez le rapport d'avant un changement et comparez.
 
@@ -1504,6 +1511,7 @@ Mesurez d'abord. `cargo build --timings` écrit un rapport HTML du temps de comp
 - **Une crate de bibliothèque est compilée, pas liée.** Ce qui passe par l'édition de liens, c'est chaque binaire, et lors d'un lancement des tests, chaque binaire de test.
 - **Chaque crate peut avoir trois sortes de binaires de test :** ses tests unitaires, chaque fichier placé directement dans `tests/` (la section 14.1 réduit cela à un seul, `tests/it`), et ses exemples de documentation. Depuis l'édition 2024, les exemples de documentation d'une crate sont compilés en un seul binaire. Une crate sans exemples de documentation met `doctest = false` sous `[lib]`.
 - **Un lancement des tests sous `app` n'a jamais besoin de Tauri.** La commande de tous les jours est `cargo nextest run --workspace --exclude quayside`. Seuls les tests de bout en bout de la section 14 compilent la crate `app`.
+- **Une bibliothèque native lourde coûte plus cher que Tauri.** Les sources C et C++ compilées par des scripts de build, et les crates d'apprentissage automatique, prennent la plus grande partie d'un build propre et la plus grande partie de l'édition de liens de chaque binaire qui les inclut. La section 5.3 les tient à l'écart des tests de `core`.
 - **Les informations de débogage représentent une grande part du temps d'édition de liens.** La plupart ne sont jamais lues.
 
 ### 22.2. Réglages de build
@@ -1513,12 +1521,16 @@ Dans le `Cargo.toml` à la racine du workspace :
 ```toml
 [profile.dev]
 debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
 [profile.dev.package."*"]
 debug = false
+strip = false
 ```
 
 Vos propres crates gardent les fichiers et les numéros de ligne dans les backtraces ; les dépendances n'ont aucune information de débogage. Remontez à `debug = true` le temps d'une session quand vous avez besoin d'un débogueur.
+
+`strip = false` n'est pas optionnel sous macOS. Avec `debug = false`, Cargo retire aussi par défaut les symboles de ces unités, et sous macOS 27 le `strip` du système abîme les bibliothèques dynamiques des macros procédurales : `serde_derive` ne peut plus être chargée et un build propre échoue. `split-debuginfo = "unpacked"` est écrit en toutes lettres pour que le lancement de `dsymutil` après chaque édition de liens sous macOS ne dépende pas de la valeur par défaut d'une version donnée de Cargo.
 
 L'éditeur de liens compte surtout pour les binaires de test. Sous Linux pour x86-64, Rust utilise `rust-lld` par défaut depuis la version 1.90. Les autres cibles Linux peuvent utiliser `mold`. Sous macOS, l'éditeur de liens fourni avec Xcode 15 et suivants est déjà rapide, laissez-le tel quel. Sous Windows, `rust-lld` est en général bien plus rapide que l'éditeur de liens par défaut. Dans `.cargo/config.toml` :
 
@@ -1530,6 +1542,18 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
 ```
+
+**Optimisez les dépendances dans lesquelles vos tests passent leur temps.** Un build de dev compile chaque dépendance sans optimisation, y compris une base de données chiffrée compilée depuis des sources C, un algorithme de chiffrement ou une fonction de hachage que les tests appellent des millions de fois. N'optimiser que ces paquets rend les tests plus rapides et laisse le build de release inchangé. Dans l'un de nos workspaces, cela a fait passer un lancement des tests de 170 à 102 secondes :
+
+```toml
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+```
+
+Chaque ligne coûte une recompilation de ce paquet. Mesurez le lancement des tests avant et après, et ne gardez que les paquets qui l'ont fait bouger.
 
 Supprimez les dépendances que personne n'utilise : `cargo machete` les liste, et chacune est du temps de compilation pour rien.
 
@@ -1545,7 +1569,7 @@ Cargo compile une dépendance une fois pour chaque ensemble distinct de features
 t = "nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail"
 ```
 
-Tout le monde, agents et CI compris, lance `cargo t` pour toute la suite, et chaque commande de test plus ciblée garde les mêmes `--features`. Une commande de test avec une autre liste de features, c'est un deuxième build.
+Tout le monde, agents et CI compris, lance `cargo t` pour toute la suite, et chaque commande de test plus ciblée est `cargo t` avec un filtre en plus (22.4). Une commande de test avec une autre liste de paquets ou de features, c'est un deuxième build.
 
 ### 22.4. Lancer ce qu'un changement peut affecter
 
@@ -1555,37 +1579,44 @@ L'organisation fixe dit à quelle slice appartient un fichier, et le graphe des 
 |---|---|
 | `logic.rs`, `model.rs`, `store.rs`, `service.rs` ou `actor/` dans une seule slice, son `mod.rs` inchangé | les tests de cette slice, et `cargo mutants --in-diff` (14.3) |
 | le `mod.rs` d'une slice, son API publique | cette slice et chaque slice qui l'importe |
-| `kit`, `store` ou `drivers` | chaque crate qui en dépend : `cargo nextest run -E 'rdeps(quayside-store)'` |
+| un module de `tests/it` | ce module |
+| `kit`, `store` ou `drivers` | chaque crate qui en dépend : `cargo t -E 'rdeps(quayside-store)'` |
 | `drivers/src/platform/` | aussi le test de contrat (12.5) ; en CI, le job de plateforme (16.3) |
 | uniquement `app` | les tests de bout en bout à travers le point d'entrée ; rien n'a changé dans `core` |
 | `Cargo.toml`, `Cargo.lock`, `.cargo/`, le fichier de toolchain | tout |
 
-Les tests d'une slice sont faciles à sélectionner, parce que leurs noms commencent par la slice : les tests unitaires vivent dans `core/src/<slice>/`, donc leurs noms commencent par `<slice>::`, et les modules de `tests/it` commencent aussi par la slice (`recording_stops_on_time_limit`). Une première version de la sélection tient dans un court script :
+Un filtre choisit quels tests sont **lancés**, pas ce qui est **compilé** : nextest compile d'abord chaque paquet que nomment les options de Cargo, puis applique `-E`. C'est pourquoi chaque ligne garde les paquets et les features de `cargo t` et ne réduit qu'avec `-E`. Le build reste celui qui est déjà dans `target/`, et seul le lancement raccourcit. Réduire le build avec `-p` ne fait gagner du temps de compilation que quand `cargo-hakari` (22.3) garde les features identiques ; sans lui, `-p` est un deuxième build des dépendances.
+
+Les tests d'une slice sont faciles à sélectionner, parce que leurs noms commencent par la slice : les tests unitaires vivent dans `core/src/<slice>/`, donc leurs noms commencent par `<slice>::`, et les modules de `tests/it` commencent aussi par la slice (`recording_stops_on_time_limit`). Une première version de la sélection tient dans un court script. Il compare la copie de travail avec le point où la branche a quitté `main`, donc les changements pas encore commités comptent aussi, et c'est ce dont la boucle d'un agent a besoin :
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-changed="$(git diff --name-only origin/main...HEAD)"
-core="crates/quayside-core/src"
-tests=(cargo nextest run --features quayside-drivers/fake --no-tests=fail)
+base="$(git merge-base origin/main HEAD)"
+changed="$({ git diff --name-only "$base"; git ls-files --others --exclude-standard; } | sort -u)"
+crate="crates/quayside-core"
+tests=(cargo nextest run --workspace --exclude quayside --features quayside-drivers/fake --no-tests=fail)
 
 if grep -qE '(^|/)Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain|^crates/quayside-(kit|store|drivers)/' <<< "$changed"; then
-  exec "${tests[@]}" --workspace --exclude quayside
+  exec "${tests[@]}"
 fi
-if grep -qE "^$core/(lib\.rs|.*mod\.rs)$" <<< "$changed"; then
-  exec "${tests[@]}" -p quayside-core
+if grep -qE "^$crate/(src/[^/]+\.rs|src/.*mod\.rs|tests/it/main\.rs|tests/it/support/)" <<< "$changed"; then
+  exec "${tests[@]}" -E 'package(quayside-core)'
 fi
 
-slices="$(sed -nE "s#^$core/([a-z_]+)/.*#\1#p" <<< "$changed" | sort -u | paste -sd'|' -)"
-if [ -z "$slices" ]; then
-  echo "no slice of core changed"
+names="$({
+  sed -nE "s#^$crate/src/([a-z_]+)/.*#\1#p" <<< "$changed"
+  sed -nE "s#^$crate/tests/it/([a-z_]+)\.rs\$#\1#p" <<< "$changed"
+} | sort -u | paste -sd'|' -)"
+if [ -z "$names" ]; then
+  echo "nothing below app changed; run the end-to-end tests of the entry"
   exit 0
 fi
-exec "${tests[@]}" -p quayside-core -E "test(/^($slices)(::|_)/)"
+exec "${tests[@]}" -E "package(quayside-core) & test(/^($names)(::|_)/)"
 ```
 
-Il est volontairement prudent : un changement dans n'importe quel `mod.rs` lance tout `core` au lieu de suivre le graphe des slices. Remplacez cette étape par le graphe quand la suite de `core` devient lente.
+Il est volontairement prudent : un changement dans n'importe quel `mod.rs`, dans un fichier au sommet de `core/src/` ou dans les helpers de test partagés lance tout `core` au lieu de suivre le graphe des slices. Remplacez cette étape par le graphe quand la suite de `core` devient lente.
 
 La sélection sert à la vitesse, pas à la preuve. Utilisez trois niveaux :
 
@@ -1597,26 +1628,49 @@ La sélection sert à la vitesse, pas à la preuve. Utilisez trois niveaux :
 
 `--no-tests=fail` (14.1) reste activé à chaque niveau, pour qu'une sélection qui ne correspond à rien soit rouge, pas verte en silence.
 
-### 22.5. Un seul cache pour plusieurs copies de travail
+### 22.5. Plusieurs copies de travail
 
-Les agents de code travaillent souvent en parallèle, chacun dans sa propre copie de travail, et chaque copie de travail a son propre `target/`. Sans cache partagé, quatre agents compilent les mêmes dépendances quatre fois au même moment.
+Les agents de code travaillent souvent en parallèle, chacun dans sa propre copie de travail. Sans précaution, quatre agents compilent les mêmes dépendances quatre fois au même moment.
 
-Définissez `sccache` comme wrapper du compilateur, dans le `~/.cargo/config.toml` de l'utilisateur ou dans l'environnement (`RUSTC_WRAPPER=sccache`). Son cache local est partagé par toutes les copies de travail de la machine, donc les dépendances ne se compilent qu'une fois. `sccache` ne met pas en cache vos propres crates, que Cargo compile de façon incrémentale, et c'est très bien ainsi : elles sont la petite partie.
+**Chaque copie de travail a son propre `target/`.** Ne faites pas pointer plusieurs copies vers un seul dossier, ni avec un lien symbolique, ni avec `CARGO_TARGET_DIR`. Cela ressemble à un cache partagé, mais c'est un bug de correction. Deux copies du même workspace produisent les mêmes noms d'artefacts et les mêmes entrées d'empreinte, donc après `build A; build B; build A`, Cargo peut déclarer la copie A `Fresh` alors que la bibliothèque sur le disque a été compilée à partir des sources de B. Un check juge alors le code de quelqu'un d'autre et annonce vert. En plus, des branches qui diffèrent recompilent les crates l'une de l'autre à chaque changement.
+
+**Démarrez une nouvelle copie à chaud en clonant, pas en partageant.** Quand la copie de travail est créée, copiez le `target/` de la copie principale avec un clone copy-on-write : `cp -c -R` sous macOS (APFS), `cp --reflink=auto -R` sous Btrfs ou XFS. Cela prend quelques secondes et aucun espace disque tant qu'aucun fichier ne change. Les dépendances restent à jour, et Cargo ne recompile que vos propres crates, parce que leurs sources sont plus récentes que ce que le clone a enregistré. Mesurez une fois le premier build dans une nouvelle copie ; il doit être proche d'un build incrémental, pas d'un build propre.
+
+**`sccache` est un complément, pas la réponse.** Définissez-le comme wrapper du compilateur, dans le `~/.cargo/config.toml` de l'utilisateur ou dans l'environnement (`RUSTC_WRAPPER=sccache`), et son cache local est partagé par toutes les copies de travail de la machine. Il met en cache la compilation des dépendances de bibliothèque ordinaires. Il ne met pas en cache les macros procédurales, les binaires, les crates `cdylib` ni vos propres crates, que Cargo compile de façon incrémentale, et il ne met pas en cache l'édition de liens. L'édition de liens des binaires de test est ce que chaque copie de travail paie le plus, et seuls 14.1, 22.2 et le clone ci-dessus la réduisent.
 
 Limitez la part de la machine qu'un build peut prendre avec `CARGO_BUILD_JOBS`, par exemple la moitié des cœurs, pour qu'un deuxième build ralentisse au lieu de figer la machine. La règle de la section 19.2 tient toujours : un seul build lourd à la fois.
 
 ### 22.6. CI
 
-- **Un cache dans chaque job Rust**, y compris le job de plateforme de 16.3. `Swatinem/rust-cache` garde les dépendances et le dossier target d'un lancement à l'autre, avec `Cargo.lock` comme clé.
+- **Un cache dans chaque job Rust**, y compris le job de plateforme de 16.3. `Swatinem/rust-cache` garde les dépendances et le dossier target d'un lancement à l'autre, avec `Cargo.lock` et la toolchain comme clé.
+- **Écrire le cache uniquement depuis `main`, le lire partout.** Un lancement de pull request peut lire le cache de sa propre ref et de la branche par défaut, rien d'autre, donc un cache écrit par une pull request n'aide que cette pull request, tandis que la branche par défaut, où toutes les autres pull requests regardent, reste vide. Mettez `save-if: ${{ github.ref == 'refs/heads/main' }}` et lancez aussi le workflow sur `push` vers `main`, pour que chaque merge rafraîchisse le cache et que le premier lancement de chaque pull request démarre à chaud. Dans l'un de nos dépôts, cela a fait passer le premier lancement de 942 à 478 secondes.
+- **`CARGO_INCREMENTAL=0`** en CI. Les données incrémentales sont lourdes et inutiles dans un lancement neuf. `Swatinem/rust-cache` le règle pour vous ; avec un autre cache, réglez-le vous-même.
+- **Les tests sous `app` sous Linux.** Quand le seul code macOS se trouve dans `drivers/src/platform/` et dans les crates de drivers natifs de 5.3, les tests de `kit`, `store` et `core` n'ont pas besoin de macOS. Lancez-les sur un runner Linux, qui démarre plus vite et coûte moins cher, et gardez le runner macOS pour `drivers`, `app` et le test de contrat.
 - **Compiler une fois, tester en parallèle**, quand la suite dure plus de quelques minutes : `cargo nextest archive` compile les binaires de test dans un job, et plusieurs jobs en lancent chacun une part avec `--partition hash:1/3`, `2/3`, `3/3`.
 - **Un rapport de timings sur `main`.** `cargo build --timings` comme artefact de chaque build de `main`. Quand la barre de `core` ne cesse de s'allonger après un changement dans une seule slice, c'est la mesure que la section 5.3 demande avant une séparation.
 - **`cargo hakari verify`** et **`cargo deny check`** à côté des checks de la section 16. Les deux prennent quelques secondes.
+
+### 22.7. Ce qui fait repartir un build de zéro
+
+Un build qui repart de zéro sans raison visible a presque toujours l'une de ces causes :
+
+- **Un script de build sans `rerun-if-changed`.** Un `build.rs` qui n'affiche aucun `cargo:rerun-if-changed` est relancé après un changement dans n'importe quel fichier de son paquet, et tout ce qui utilise sa sortie est recompilé. Affichez une ligne par entrée. Un script qui compile des programmes auxiliaires (Swift, C) liste leurs sources. Ne listez jamais un chemin qui n'existe pas : Cargo le considère comme modifié à chaque build.
+- **`tauri dev` qui surveille sa propre sortie.** Le serveur de développement recompile l'application quand un fichier de `src-tauri/` change. Une base de données, un log ou un fichier généré que l'application écrit là relance le build en boucle. Les données d'exécution vont sous `kit::paths` (12.4) ; les fichiers générés vont dans `.taurignore`.
+- **L'éditeur et le terminal dans un seul dossier.** rust-analyzer lance `cargo check` avec ses propres réglages. Dans le même `target/`, l'éditeur et le terminal ou un agent attendent le verrou l'un de l'autre et peuvent invalider le travail l'un de l'autre. Donnez à l'éditeur son propre dossier : `"rust-analyzer.cargo.targetDir": true`.
+- **Des environnements différents.** `RUSTFLAGS`, et les variables que lisent les scripts de build (`MACOSX_DEPLOYMENT_TARGET`, `CC`, `CFLAGS`), font partie de ce que Cargo compare. Si le terminal, l'éditeur et le shell d'un agent les règlent différemment, chaque passage de l'un à l'autre recompile. Mettez-les dans `.cargo/config.toml` (`[env]`, `[build] rustflags`), pas dans les profils du shell.
+- **Une toolchain qui bouge.** Un nouveau compilateur recompile tout. Fixez la version complète dans `rust-toolchain.toml`, en trois parties (`1.98.1`) : un canal en deux parties prend chaque nouvelle version de correctif sans aucun changement dans le dépôt.
+
+### 22.8. Nettoyer `target/`
+
+Cargo ne supprime jamais les anciens artefacts. Chaque branche, chaque ensemble de features et chaque version de dépendance laisse des fichiers derrière lui, et avec des centaines de milliers de fichiers dans `target/`, chaque commande Cargo ralentit. Dans l'un de nos workspaces, `cargo clean` a supprimé environ 960 000 fichiers (119 GiB). Un build complet de la bibliothèque et de ses tests est passé de 7–8 minutes à 36 secondes, et `cargo clippy --all-targets` de plusieurs minutes à 8 secondes.
+
+Faites-en une règle, pas un sauvetage : quand `target/debug/deps` dépasse quelques dizaines de milliers de fichiers, ou que `target/` dépasse quelques dizaines de gigaoctets, lancez `cargo clean` et acceptez un build à froid. `cargo sweep --time 30` est l'option plus douce : il ne supprime que les artefacts inutilisés depuis 30 jours. Une copie de travail supprimée emporte son `target/` avec elle.
 
 ## 23. Historique des versions
 
 | Version | Date | Changements |
 |---|---|---|
-| 1.2 | 25 octobre 2026 | Section 22, *Temps de build et de test* : où part le temps de compilation, les réglages de build, un seul ensemble de features, lancer les tests qu'un changement peut affecter, un cache de compilation partagé pour les copies de travail parallèles, la CI. Nouvelles sous-sections 14.3 (des mutants dans le diff), 14.4 (des tests de propriétés pour `update`) et 16.5 (Clippy, `cargo-deny`, `ast-grep`). Des checks pour les règles qui n'en avaient pas : la pureté de `logic.rs`, le `mod.rs` d'une slice, les cycles entre slices, la commande de 10 lignes, `unwrap()` et `panic!`. Les jointures par les données préférées à une feature `fake`. Corrections : le coût d'une crate (5.2, 5.3), `resolver = "3"` pour l'édition 2024 (5.1), l'étape de cache dans le job de plateforme (16.3). L'historique des versions passe de la section 22 à la section 23 ; les sections 1 à 21 gardent leurs numéros. |
+| 1.2 | 25 octobre 2026 | Section 22, *Temps de build et de test* : où part le temps de compilation, les réglages de build (y compris `strip = false` et les dépendances de test optimisées), un seul ensemble de features, lancer les tests qu'un changement peut affecter, un `target/` séparé pour chaque copie de travail, démarré depuis un clone copy-on-write, la CI avec un cache écrit uniquement depuis `main`, ce qui fait repartir un build de zéro, et le nettoyage de `target/`. Les drivers natifs lourds dans une crate dont `core` ne dépend pas (5.3). Nouvelles sous-sections 14.3 (des mutants dans le diff), 14.4 (des tests de propriétés pour `update`) et 16.5 (Clippy, `cargo-deny`, `ast-grep`). Des checks pour les règles qui n'en avaient pas : la pureté de `logic.rs`, le `mod.rs` d'une slice, les cycles entre slices, la commande de 10 lignes, `unwrap()` et `panic!`. Les jointures par les données préférées à une feature `fake`. Corrections : le coût d'une crate (5.2, 5.3), `resolver = "3"` pour l'édition 2024 (5.1), l'étape de cache dans le job de plateforme (16.3). L'historique des versions passe de la section 22 à la section 23 ; les sections 1 à 21 gardent leurs numéros. |
 | 1.1 | 25 octobre 2026 | Section 12, *Plateformes* : le dossier `platform/` dans `drivers`, les contrats de plateforme, les interdictions hors de `platform/`, les règles sur les chemins, les fichiers et le texte, les tests de plateforme, le job de compilation en CI sous Linux et Windows, la recette de portage. Ajouts aux tiers, à l'application des règles, aux recettes et à l'arbre de décision. |
 | 1.0 | 24 octobre 2026 | Première version : tiers, slices aux couches fixes, règles d'import, flux de données, acteurs, l'état de l'application comme racine de composition, erreurs, tests, limites de taille, application des règles, recettes et migration. |
 
