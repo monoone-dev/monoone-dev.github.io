@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { highlightCode } from './highlight'
 
 export interface TocLink {
   id: string
@@ -31,7 +32,12 @@ const DIAGRAM_TOKEN = /<p>@@diagram:([a-z-]+)@@<\/p>\n?/
 const LEADING_H2 = /^<h2 id="s\d+">[\s\S]*?<\/h2>\n?/
 const SECTION_NUMBER = /^\d+\.\s*/
 
-const md = new MarkdownIt({ html: false, linkify: false, typographer: false })
+const md = new MarkdownIt({
+  html: false,
+  linkify: false,
+  typographer: false,
+  highlight: (code, lang) => highlightCode(code, lang.trim().toLowerCase())
+})
 
 md.renderer.rules.heading_open = (tokens, idx, options, env: RenderEnv, self) => {
   const token = tokens[idx]!

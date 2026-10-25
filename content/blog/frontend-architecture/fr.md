@@ -61,7 +61,7 @@ Quand un point de cette page contredit les articles d'origine, l'original fait r
 
 :::diagram fe-grid
 
-```
+```tree
 apps/<app>/                         thin: bootstrap, root routes, root providers
 libs/<domain>/feature-<use-case>/   smart components for one use case (a page or a flow)
 libs/<domain>/ui-<name>/            presentational components: inputs in, events out
@@ -125,7 +125,7 @@ Cinq équipes, environ trente-cinq développeurs front-end, environ 280 000 lign
 
 ### 5.3. Le workspace
 
-```text
+```tree
 fleetline/
 ├── apps/
 │   ├── ops-portal/
@@ -442,7 +442,7 @@ Comme le graphe de dépendances est explicite, une modification dans `maintenanc
 
 `maintenance/data-access` contient tout ce qui concerne l'origine des ordres de travail et la façon dont ils changent. Cette section la montre en entier. Chaque fichier a une seule tâche.
 
-```text
+```tree
 libs/maintenance/data-access/src/
 ├── index.ts
 └── lib/
@@ -775,6 +775,88 @@ Sans facade, l'`index.ts` de `data-access` exporte à la place les événements 
 
 Une fois `data-access` en place, les bibliothèques restantes sont courtes.
 
+Le workspace Angular avec tous les fichiers de ce cas d'usage. Chaque bibliothèque a aussi son propre `project.json` et son `tsconfig.json` ; l'arbre ne les montre que pour l'application et pour `data-access`.
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── ops-portal/
+│       ├── project.json
+│       ├── tsconfig.json
+│       └── src/
+│           ├── main.ts
+│           ├── index.html
+│           ├── styles.scss
+│           ├── environments/
+│           │   └── environment.ts
+│           └── app/
+│               ├── app.config.ts
+│               └── app.routes.ts
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── maintenance.routes.ts
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders-page.component.ts
+    │   │           └── work-orders-page.component.spec.ts
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-order-card.component.ts
+    │   │           ├── work-order-card.component.scss
+    │   │           └── status-filter.component.ts
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.api.ts
+    │   │           ├── work-orders.events.ts
+    │   │           ├── work-orders.feature.ts
+    │   │           ├── work-orders.feature.spec.ts
+    │   │           ├── work-orders.effects.ts
+    │   │           ├── work-orders.facade.ts
+    │   │           └── work-orders.providers.ts
+    │   └── model/
+    │       ├── src/
+    │       │   ├── index.ts
+    │       │   └── lib/
+    │       │       ├── work-order.ts
+    │       │       └── work-order.spec.ts
+    │       └── testing/
+    │           └── src/
+    │               └── index.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               ├── fleet.api.ts
+    │               └── vehicle-summary.store.ts
+    ├── identity/
+    │   ├── api/
+    │   └── data-access/
+    └── shared/
+        ├── ui-design-system/
+        ├── ui-layout/
+        ├── data-access-http/
+        └── util-date/
+```
+
 ### 11.1. La bibliothèque ui
 
 `libs/maintenance/ui-work-order-card/src/lib/work-order-card.component.ts`
@@ -966,6 +1048,92 @@ C'est toute l'application : deux fichiers et un `environment`. `backoffice` mont
 ## 12. React et Next.js
 
 L'architecture ne dépend pas d'Angular. Bibliothèques, types, domaines, tags et règle de lint restent les mêmes ; Nx génère les projets React et Next.js avec `@nx/react` et `@nx/next`. Ce qui change, c'est la façon d'implémenter chaque type de bibliothèque, et Next.js ajoute une nouvelle dimension : le code qui ne s'exécute que sur le serveur.
+
+Le même workspace avec une application Next.js et tous les fichiers de ce cas d'usage :
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── customer/
+│       ├── project.json
+│       ├── next.config.js
+│       ├── tsconfig.json
+│       ├── public/
+│       └── app/
+│           ├── layout.tsx
+│           ├── page.tsx
+│           └── maintenance/
+│               ├── layout.tsx
+│               └── depots/
+│                   └── [depotId]/
+│                       └── work-orders/
+│                           ├── page.tsx
+│                           └── loading.tsx
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── maintenance-layout.tsx
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders-page.tsx
+    │   │           └── work-orders-page.spec.tsx
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-order-card.tsx
+    │   │           ├── work-order-card.module.css
+    │   │           └── status-filter.tsx
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.http.ts
+    │   │           ├── work-orders.slice.ts
+    │   │           ├── work-orders.slice.spec.ts
+    │   │           ├── work-orders.listeners.ts
+    │   │           └── use-work-orders.ts
+    │   ├── data-access-server/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── work-orders.ts
+    │   └── model/
+    │       └── src/
+    │           ├── index.ts
+    │           └── lib/
+    │               └── work-order.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               └── use-vehicle-summaries.ts
+    └── shared/
+        ├── data-access-store/
+        │   └── src/
+        │       ├── index.ts
+        │       └── lib/
+        │           ├── store.ts
+        │           └── store-provider.tsx
+        ├── data-access-server/
+        ├── data-access-http/
+        ├── ui-design-system/
+        └── util-date/
+```
 
 ### 12.1. Les correspondances
 
@@ -1401,6 +1569,82 @@ La valeur de retour a les mêmes membres. `WorkOrdersPage` ne change pas, sauf q
 ## 13. Vue et Nuxt
 
 Vue se transpose encore plus directement, car les setup stores Pinia ressemblent beaucoup à un NgRx Signal Store, et les composables sont la forme naturelle d'une facade. Nx construit les projets Vue et Nuxt avec `@nx/vue` et `@nx/nuxt`.
+
+Le même workspace avec une application Nuxt et tous les fichiers de ce cas d'usage :
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── backoffice/
+│       ├── project.json
+│       ├── nuxt.config.ts
+│       ├── tsconfig.json
+│       ├── public/
+│       └── app/
+│           ├── app.vue
+│           ├── layouts/
+│           │   ├── default.vue
+│           │   └── maintenance.vue
+│           ├── middleware/
+│           │   └── maintenance-read.ts
+│           └── pages/
+│               ├── index.vue
+│               └── maintenance/
+│                   └── depots/
+│                       └── [depotId]/
+│                           └── work-orders.vue
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── MaintenanceLayout.vue
+    │   │           └── require-maintenance-read.ts
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── WorkOrdersPage.vue
+    │   │           └── WorkOrdersPage.spec.ts
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── WorkOrderCard.vue
+    │   │           └── StatusFilter.vue
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.http.ts
+    │   │           ├── work-orders.store.ts
+    │   │           ├── work-orders.store.spec.ts
+    │   │           └── use-work-orders.ts
+    │   └── model/
+    │       └── src/
+    │           ├── index.ts
+    │           └── lib/
+    │               └── work-order.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               └── use-vehicle-summaries.ts
+    └── shared/
+        ├── data-access-http/
+        ├── ui-design-system/
+        └── util-date/
+```
 
 ### 13.1. Les correspondances
 

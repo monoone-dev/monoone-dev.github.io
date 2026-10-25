@@ -112,6 +112,31 @@
     }
   }
 
+  pre.shiki {
+    color: var(--shiki-light);
+
+    span {
+      color: var(--shiki-light);
+    }
+  }
+
+  pre.code-tree {
+    color: var(--ui-text);
+
+    .t-guide {
+      color: var(--ui-text-dimmed);
+    }
+
+    .t-dir {
+      color: #005cc5;
+      font-weight: 600;
+    }
+
+    .t-note {
+      color: var(--ui-text-muted);
+    }
+  }
+
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--ui-border);
@@ -146,6 +171,17 @@
 
   td code {
     white-space: nowrap;
+  }
+}
+
+.dark .prose-doc {
+  pre.shiki,
+  pre.shiki span {
+    color: var(--shiki-dark);
+  }
+
+  pre.code-tree .t-dir {
+    color: #79b8ff;
   }
 }
 

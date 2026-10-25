@@ -61,7 +61,7 @@
 
 :::diagram fe-grid
 
-```
+```tree
 apps/<app>/                         thin: bootstrap, root routes, root providers
 libs/<domain>/feature-<use-case>/   smart components for one use case (a page or a flow)
 libs/<domain>/ui-<name>/            presentational components: inputs in, events out
@@ -125,7 +125,7 @@ Fleetline 为运营卡车、厢式货车和公交车的公司提供维修服务�
 
 ### 5.3. 工作区
 
-```text
+```tree
 fleetline/
 ├── apps/
 │   ├── ops-portal/
@@ -442,7 +442,7 @@ nx graph --affected
 
 `maintenance/data-access` 包含工单从哪里来、如何变化的全部内容。本节完整地展示它。每个文件只有一项职责。
 
-```text
+```tree
 libs/maintenance/data-access/src/
 ├── index.ts
 └── lib/
@@ -775,6 +775,88 @@ NgRx 社区有一个反对 facade 的好论点：action 应该描述事件（*�
 
 有了 `data-access`，其余的库都很短。
 
+包含此用例全部文件的 Angular 工作区。每个库还有自己的 `project.json` 和 `tsconfig.json`，树中只为应用和 `data-access` 列出它们。
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── ops-portal/
+│       ├── project.json
+│       ├── tsconfig.json
+│       └── src/
+│           ├── main.ts
+│           ├── index.html
+│           ├── styles.scss
+│           ├── environments/
+│           │   └── environment.ts
+│           └── app/
+│               ├── app.config.ts
+│               └── app.routes.ts
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── maintenance.routes.ts
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders-page.component.ts
+    │   │           └── work-orders-page.component.spec.ts
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-order-card.component.ts
+    │   │           ├── work-order-card.component.scss
+    │   │           └── status-filter.component.ts
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.api.ts
+    │   │           ├── work-orders.events.ts
+    │   │           ├── work-orders.feature.ts
+    │   │           ├── work-orders.feature.spec.ts
+    │   │           ├── work-orders.effects.ts
+    │   │           ├── work-orders.facade.ts
+    │   │           └── work-orders.providers.ts
+    │   └── model/
+    │       ├── src/
+    │       │   ├── index.ts
+    │       │   └── lib/
+    │       │       ├── work-order.ts
+    │       │       └── work-order.spec.ts
+    │       └── testing/
+    │           └── src/
+    │               └── index.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               ├── fleet.api.ts
+    │               └── vehicle-summary.store.ts
+    ├── identity/
+    │   ├── api/
+    │   └── data-access/
+    └── shared/
+        ├── ui-design-system/
+        ├── ui-layout/
+        ├── data-access-http/
+        └── util-date/
+```
+
 ### 11.1. ui 库
 
 `libs/maintenance/ui-work-order-card/src/lib/work-order-card.component.ts`
@@ -966,6 +1048,92 @@ export const appConfig: ApplicationConfig = {
 ## 12. React 和 Next.js
 
 这套架构不依赖 Angular。库、类型、领域、标签和 lint 规则都保持不变；Nx 用 `@nx/react` 和 `@nx/next` 生成 React 和 Next.js 项目。变化的是每种库类型的实现方式，而 Next.js 增加了一个新的维度：只在服务器上运行的代码。
+
+同一个工作区换成 Next.js 应用，并列出此用例的全部文件：
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── customer/
+│       ├── project.json
+│       ├── next.config.js
+│       ├── tsconfig.json
+│       ├── public/
+│       └── app/
+│           ├── layout.tsx
+│           ├── page.tsx
+│           └── maintenance/
+│               ├── layout.tsx
+│               └── depots/
+│                   └── [depotId]/
+│                       └── work-orders/
+│                           ├── page.tsx
+│                           └── loading.tsx
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── maintenance-layout.tsx
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders-page.tsx
+    │   │           └── work-orders-page.spec.tsx
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-order-card.tsx
+    │   │           ├── work-order-card.module.css
+    │   │           └── status-filter.tsx
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.http.ts
+    │   │           ├── work-orders.slice.ts
+    │   │           ├── work-orders.slice.spec.ts
+    │   │           ├── work-orders.listeners.ts
+    │   │           └── use-work-orders.ts
+    │   ├── data-access-server/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           └── work-orders.ts
+    │   └── model/
+    │       └── src/
+    │           ├── index.ts
+    │           └── lib/
+    │               └── work-order.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               └── use-vehicle-summaries.ts
+    └── shared/
+        ├── data-access-store/
+        │   └── src/
+        │       ├── index.ts
+        │       └── lib/
+        │           ├── store.ts
+        │           └── store-provider.tsx
+        ├── data-access-server/
+        ├── data-access-http/
+        ├── ui-design-system/
+        └── util-date/
+```
 
 ### 12.1. 对应关系
 
@@ -1401,6 +1569,82 @@ export function useWorkOrders(depotId: string, initial?: WorkOrder[]) {
 ## 13. Vue 和 Nuxt
 
 Vue 的对应关系更加直接，因为 Pinia 的 setup store 和 NgRx Signal Store 很像，而 composable 天然就是 facade 的形状。Nx 用 `@nx/vue` 和 `@nx/nuxt` 构建 Vue 和 Nuxt 项目。
+
+同一个工作区换成 Nuxt 应用，并列出此用例的全部文件：
+
+```tree
+fleetline/
+├── nx.json
+├── package.json
+├── tsconfig.base.json
+├── eslint.config.mjs
+├── apps/
+│   └── backoffice/
+│       ├── project.json
+│       ├── nuxt.config.ts
+│       ├── tsconfig.json
+│       ├── public/
+│       └── app/
+│           ├── app.vue
+│           ├── layouts/
+│           │   ├── default.vue
+│           │   └── maintenance.vue
+│           ├── middleware/
+│           │   └── maintenance-read.ts
+│           └── pages/
+│               ├── index.vue
+│               └── maintenance/
+│                   └── depots/
+│                       └── [depotId]/
+│                           └── work-orders.vue
+└── libs/
+    ├── maintenance/
+    │   ├── feature-shell/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── MaintenanceLayout.vue
+    │   │           └── require-maintenance-read.ts
+    │   ├── feature-work-orders/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── WorkOrdersPage.vue
+    │   │           └── WorkOrdersPage.spec.ts
+    │   ├── ui-work-order-card/
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── WorkOrderCard.vue
+    │   │           └── StatusFilter.vue
+    │   ├── data-access/
+    │   │   ├── project.json
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── index.ts
+    │   │       └── lib/
+    │   │           ├── work-orders.http.ts
+    │   │           ├── work-orders.store.ts
+    │   │           ├── work-orders.store.spec.ts
+    │   │           └── use-work-orders.ts
+    │   └── model/
+    │       └── src/
+    │           ├── index.ts
+    │           └── lib/
+    │               └── work-order.ts
+    ├── fleet/
+    │   ├── api/
+    │   │   └── src/
+    │   │       └── index.ts
+    │   └── data-access/
+    │       └── src/
+    │           └── lib/
+    │               └── use-vehicle-summaries.ts
+    └── shared/
+        ├── data-access-http/
+        ├── ui-design-system/
+        └── util-date/
+```
 
 ### 13.1. 对应关系
 
