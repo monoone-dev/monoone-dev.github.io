@@ -6,7 +6,7 @@ Questa pagina è il riferimento completo. È scritta in modo che un team che non
 
 I numeri delle sezioni sono stabili. Un repository che segue SLAT tiene una breve copia delle regole in `docs/slat/SLAT.md` con gli stessi numeri, così un riferimento come "sezione 17.8" significa la stessa cosa in questa pagina e nel repository. Quando le due versioni differiscono, entrambe vengono corrette lo stesso giorno. Una nuova sezione si aggiunge subito prima della cronologia delle versioni, che resta sempre l'ultima.
 
-> **Versione 1.2** · 25 ottobre 2026. La versione 1.2 aggiunge la sezione 22, *Tempi di build e di test*: dove va il tempo di compilazione in un workspace SLAT, le impostazioni che lo riducono, come eseguire solo i test che una modifica può toccare e cosa fa ripartire una build da capo quando non dovrebbe. Dà inoltre un check a ogni regola della guida, compresi la purezza di `logic.rs`, i cicli tra slice e il comando di 10 righe. La cronologia completa è nella sezione 23.
+> **Versione 1.3** · 25 ottobre 2026. La versione 1.3 aggiunge la sezione 23, *Plugin*, una parte facoltativa per i prodotti che permettono all'utente di attivare e disattivare funzionalità: quando una funzionalità è un plugin, l'unica regola sulla direzione (una slice base non importa mai una slice di plugin), i punti di estensione, una sola build con un interruttore all'avvio e i check che la mantengono onesta. Un workspace senza plugin non richiede modifiche. La cronologia completa è nella sezione 24.
 
 ## 1. Perché esiste SLAT
 
@@ -87,6 +87,9 @@ Sei frasi da ricordare:
 | **Evento** | Il backend che avvisa il front-end che qualcosa è cambiato, senza che gli venga chiesto. | Un push in uno store |
 | **Piattaforma** | Un sistema operativo per cui compiliamo: `macos`, `linux`, `windows`. | Un browser target |
 | **Contratto di piattaforma** | Una funzione in `drivers::platform` che significa la stessa cosa su ogni sistema operativo. | Un polyfill |
+| **Plugin** | Una funzionalità che l'utente può attivare o disattivare: una o più slice con un manifest (sezione 23, facoltativa). | Una libreria di funzionalità caricata in lazy loading |
+| **Slice base** (base slice) | Una slice sempre attiva; non importa mai una slice di plugin. | Una libreria shell |
+| **Hook** | Un punto di estensione che una slice base offre e a cui i plugin rispondono con dati. | Un injection token con `multi: true` |
 
 Tre di questi termini si confondono facilmente, quindi ecco l'immagine da tenere a mente: **i tier sono i piani di un edificio, le slice sono gli appartamenti al piano `core` e i layer sono le stanze di ogni appartamento.**
 
@@ -1241,6 +1244,7 @@ Parla con un processo, la rete, un portachiavi?           → drivers (tramite i
 È un tipo del dominio?                                    → core/<s>/model.rs
 È una sequenza di passi con I/O?                          → core/<s>/service.rs
 È stato che vive in background e che la finestra osserva? → core/<s>/actor/
+Si può disattivare mentre il resto continua a funzionare? → una slice di plugin (sezione 23)
 Non ha alcun dominio (tempo, percorsi, id, file)?         → kit
 ```
 
@@ -1257,9 +1261,9 @@ Gli agenti cambiano anche il modo in cui si compila un workspace. Più agenti in
 Una sezione da copiare nella guida per chi contribuisce al repository (`AGENTS.md`, `CLAUDE.md` o equivalente):
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1268,6 +1272,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1760,10 +1766,218 @@ Cargo non cancella mai i vecchi artefatti. Ogni branch, insieme di feature e ver
 
 Va fatto per regola, non per emergenza: quando `target/debug/deps` supera qualche decina di migliaia di file, o `target/` supera qualche decina di gigabyte, si esegue `cargo clean` e si accetta una build a freddo. `cargo sweep --time 30` è l'opzione più delicata: rimuove solo gli artefatti non usati da 30 giorni. Una copia di lavoro che viene rimossa porta con sé il proprio `target/`.
 
-## 23. Cronologia delle versioni
+## 23. Plugin
+
+*Novità della versione 1.3. Facoltativa.* Un prodotto che non ha bisogno di plugin salta questa sezione. Nessun'altra sezione dipende da questa, e un workspace senza plugin segue SLAT per intero.
+
+Un plugin è una funzionalità che l'utente può attivare o disattivare mentre il resto del prodotto continua a funzionare allo stesso modo. Permette a un prodotto di restare piccolo per impostazione predefinita e di crescere per scelta. In SLAT un plugin non è un nuovo tipo di codice. È una slice, o qualcuna, con un manifest e una regola in più sulla direzione degli import. Ogni plugin viene compilato nell'applicazione: disattivarne uno significa che non viene assemblato all'avvio, non che manca dalla build.
+
+:::diagram plugins
+
+### 23.1. Quando una funzionalità è un plugin
+
+Si fa di una funzionalità un plugin solo quando **tutte e tre** le condizioni sono vere:
+
+1. il prodotto è utile senza di essa;
+2. disattivarla non perde dati e non rompe nessun'altra funzionalità, tranne i plugin che hanno dichiarato di averne bisogno;
+3. decide l'utente, non la build, la piattaforma o il canale di rilascio.
+
+| Candidato | 1 | 2 | 3 | Verdetto |
+|---|---|---|---|---|
+| sincronizzazione delle azioni da fare con una board del team | sì | sì | sì | plugin |
+| app companion per il telefono | sì | sì | sì | plugin |
+| registrazione | no, è il prodotto | — | — | slice base |
+| una funzionalità ancora in prova nel team | sì | sì | no, decide il team | un'impostazione, non un plugin |
+| un menu che esiste solo su macOS | — | — | no, decide la piattaforma | sezione 12 |
+| una build con logging extra | — | — | no, decide la build | un profilo Cargo |
+
+Questa sezione usa due termini per le slice in `core`. Una **slice base** è sempre attiva. Una **slice di plugin** appartiene a un plugin. Entrambe vivono nel tier `core`: "base" dice qualcosa del prodotto, "core" del crate.
+
+### 23.2. Struttura
+
+Una slice di plugin ha la struttura della sezione 6 e un file in più in ogni tier:
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+Un plugin con più slice tiene il manifest nella slice che porta il suo nome, e le altre sono sotto-slice di quella slice (6.1).
+
+Il manifest è una costante:
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`, `PluginId`, il file che ricorda quali plugin sono attivi e la decisione su quali plugin possono essere attivi insieme appartengono a una slice base, `core/src/plugin/`. Ha i file consueti e nessun `plugin.rs`, perché non è a sua volta un plugin. Solo `app` elenca tutti i manifest, perché solo `app` può conoscere tutte le slice. L'elenco vive in `app/src/plugins.rs`:
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. Direzione
+
+La regola che fa funzionare i plugin: **una slice base non importa mai una slice di plugin.**
+
+| Da | Può importare |
+|---|---|
+| una slice base | altre slice base |
+| una slice di plugin | slice base; un'altra slice di plugin solo quando quel plugin è nei suoi `needs` |
+| `app` | tutto |
+
+Una slice base non nomina nemmeno un plugin: niente `if on.contains("board")`, nessun id di plugin in una stringa. Quando la base ha bisogno dell'aiuto di un plugin, offre un punto di estensione (23.4) e non sa chi risponde. Con tutti i plugin disattivati, la base compila, si avvia e passa i suoi test (23.8). È questo che rende onesto il "disattivato". Nascondere un pulsante mentre la base continua a chiamare il codice del plugin non è disattivarlo.
+
+`needs` non ha cicli, per lo stesso motivo della 7.2.
+
+### 23.4. Punti di estensione
+
+Un plugin raggiunge la base in tre modi, da preferire in quest'ordine.
+
+**1. Ascoltare.** La base pubblica già ciò che cambia, tramite il suo canale `Snapshot` o `Event` (8.3). Un plugin si iscrive nel proprio servizio o attore, e la base non cambia affatto. Esempio: il plugin della board si iscrive ai riassunti completati e trasforma le loro azioni da fare in schede.
+
+**2. Rispondere a un hook.** Quando la base deve chiedere qualcosa in un punto del proprio flusso ("c'è qualcosa da aggiungere a questo riassunto?"), la slice base dichiara un hook nel suo `hooks.rs`, e ogni plugin gli risponde nel proprio `hooks.rs`:
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+Il servizio della slice base riceve i suoi hook quando `app` la assembla, come `Vec<Arc<dyn SummaryNotes>>`, e li interroga uno per uno. Con il plugin disattivato, l'elenco è vuoto e la base fa ciò che faceva prima che esistessero i plugin.
+
+Tre regole per gli hook:
+
+- **Un hook risponde con dati, subito, senza I/O.** Non è `async`. Un plugin che ha bisogno della rete o di un processo per rispondere tiene la risposta pronta nel proprio servizio o attore (qui, l'ultimo snapshot delle schede), e l'hook la legge. La base non aspetta mai un plugin, quindi un plugin lento non può rallentare la base.
+- **Un hook non decide al posto della base.** Restituisce materiale, e cosa farne è una decisione nel `logic.rs` della slice base. Un hook che potrebbe rifiutare qualcosa (un controllo di accesso, un budget) è una policy, e una policy è una slice base (6.5): i plugin le aggiungono regole come dati, e decide la slice base.
+- **Un trait di hook è l'unico trait ammesso con una sola implementazione.** La sezione 4 e la 14.2 vietano un trait finché non ci sono due implementazioni, perché fino ad allora non astrae nulla. Un hook è diverso: senza di esso la base dovrebbe importare il plugin. Ogni trait di hook sta in un `hooks.rs`, quindi l'eccezione è facile da trovare e da controllare (23.10).
+
+**3. Avere il proprio punto di ingresso.** I comandi, i DTO, gli eventi e i doors del plugin vivono in `app/src/<plugin>/`, come quelli di qualsiasi altra slice. La base non li chiama mai.
+
+### 23.5. Attivo e disattivato
+
+- **Una sola build.** Un plugin non è una feature di Cargo. Una feature per plugin rende ogni combinazione di plugin una build separata e un insieme di test separato (22.3), e l'utente non può attivare o disattivare una feature.
+- **La scelta è un file.** La slice `plugin` tiene l'insieme dei plugin attivi in un file sotto `kit::paths::config()` e lo legge una volta all'avvio. Se il file manca, ogni plugin ha il suo `on_by_default`.
+- **`app` assembla solo ciò che è attivo.** Un plugin disattivato non ha servizio, attore, hook né ciclo di eventi. Il suo campo in `AppState` lo dice, nella stessa forma dell'account nella sezione 11:
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+`on.start` restituisce `Err(PluginOff)` senza chiamare la closure quando il plugin è disattivato.
+
+- **I comandi di un plugin disattivato restano registrati.** `generate_handler!` è fissato quando l'applicazione viene compilata, quindi il comando esiste e risponde. `From<PluginOff> for IpcError` (sezione 13) dà alla finestra il codice `plugin_off`, e il comando ha ancora una sola riga di logica: `state.boards.as_ref()?.send(…)`.
+- **Una modifica ha effetto al prossimo avvio**, e la finestra lo dice in una frase. Cambiare a caldo significa che il registro dei plugin diventa un attore (soddisfa tutte e tre le condizioni della 9.1) e che ogni elenco di hook può cambiare mentre la base è in esecuzione. Conviene farlo solo quando un riavvio è un problema reale.
+- **Disattivare non cancella mai.** I file del plugin restano dove sono, le sue tabelle restano nello schema e le migrazioni di ogni plugin girano che sia attivo o no, quindi lo schema è lo stesso per ogni combinazione. Rimuovere i dati di un plugin è un'azione separata che l'utente richiede.
+- **`needs` è una funzione pura.** `plugin::logic::resolve(manifests, wanted)` restituisce l'insieme dei plugin che possono essere attivi, oppure la dipendenza mancante. Attivare un plugin la cui dipendenza è disattivata, o disattivare un plugin di cui un altro ha bisogno, viene rifiutato con una frase che nomina l'altro plugin. L'utente cambia entrambi.
+
+### 23.6. Front-end
+
+SLAT non prescrive il front-end (1.2), solo il confine, e un plugin lo attraversa come qualsiasi altra slice. La slice `plugin` ha una query, `plugin_list`, che restituisce ogni manifest con il suo stato, e il front-end mostra le schermate di un plugin solo quando è attivo. La cartella front-end di un plugin ha il nome del plugin, come nella sezione 6. Una schermata di un plugin disattivato non viene renderizzata affatto; renderizzarla e nasconderla con uno stile non è disattivarla.
+
+### 23.7. Un plugin nel proprio crate
+
+Quando un plugin è pesante da compilare (5.3), o si vuole che a sorvegliare la 23.3 sia il compilatore invece di un check, lo si sposta in `<product>-plugin-<name>`. Dipende da `core`, `core` non dipende da esso, e `app` dipende da entrambi. La regola della 23.3 è allora scritta in `Cargo.toml`, come nella 5.1, e `wrappers` in `deny.toml` (16.5) tiene ogni altro crate lontano da esso. Conta tra i sei-otto crate della 5.3, quindi va fatto per un plugin pesante, non per ogni plugin.
+
+### 23.8. Test
+
+| Cosa | Come | Cosa conta come prova |
+|---|---|---|
+| la base senza plugin | `AppState` assemblato con tutti i plugin disattivati; i test end-to-end della base | le frasi che una persona vede nella base, invariate |
+| `plugin::logic::resolve` | un semplice `#[test]` | l'insieme dei plugin, o la dipendenza mancante |
+| l'hook di un plugin | un semplice `#[test]` sulla sua implementazione, con un valore di snapshot | i dati restituiti |
+| un flusso della base con un hook | il servizio della base con un hook scritto nel modulo di test | la base ha usato ciò che l'hook ha restituito |
+| un comando di un plugin disattivato | attraverso il punto di ingresso | la frase che la finestra mostra per `plugin_off` |
+
+L'hook scritto in un modulo di test è la seconda implementazione del trait dell'hook, quindi un hook è il tipo di punto di estensione più facile da testare.
+
+### 23.9. Trasformare una slice esistente in un plugin
+
+1. **Misurare.** Si prendono gli archi dal check dei cicli della 16.4 e si elenca ogni slice base che importa la candidata. Quegli archi sono la baseline del check dei plugin (16.1).
+2. **Invertire ogni arco**, una pull request alla volta: la base pubblica e il plugin ascolta (la prima scelta), oppure la base dichiara un hook e il plugin gli risponde. Spostamenti e correzioni restano in pull request separate (19.2).
+3. **Aggiungere il manifest**, la sua riga in `PLUGINS` e il campo `Result<…, PluginOff>` in `AppState`. Si imposta `on_by_default: true`, così chi usa la funzionalità oggi la conserva.
+4. **Dimostrarlo.** Quando la baseline è vuota, si eseguono i test della base con tutti i plugin disattivati (23.8). Solo allora il plugin può essere disattivato.
+
+### 23.10. Applicazione delle regole
+
+| Regola | Chi la fa rispettare |
+|---|---|
+| una slice base non importa mai una slice di plugin | `checks/slat-plugins.sh`, qui sotto; oppure `Cargo.toml` per un plugin nel proprio crate (23.7) |
+| una slice di plugin importa un altro plugin solo quando è nei suoi `needs` | lo stesso check, confrontato con i `needs` dei manifest |
+| nessun id di plugin in una slice base | un check con grep per `PluginId(` nelle slice base fuori da `core/src/plugin/` |
+| un trait in `core` con una sola implementazione è un hook in un `hooks.rs` | una regola `ast-grep` per gli elementi `trait` in `core` fuori da `hooks.rs` (16.5), con una lista di base; ogni trait della lista ha due implementazioni (14.2) |
+| ogni manifest è in `PLUGINS` | un check che confronta le cartelle con un `plugin.rs` con `app/src/plugins.rs`, come `slat-registered.sh` |
+| la base funziona con tutti i plugin disattivati | il test della 23.8, in CI |
+
+Le slice di plugin sono le cartelle che hanno un `plugin.rs`. Il check riusa gli archi del check dei cicli:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+Mentre una slice viene trasformata in plugin (23.9), il check sottrae la sua baseline, come nella 16.1.
+
+### 23.11. Plugin dall'esterno
+
+Il codice scritto da altri e caricato mentre l'applicazione è in esecuzione è fuori da SLAT. Rust non ha un'interfaccia binaria stabile, e il codice caricato nel processo può far cadere con sé l'intera applicazione. Un'estensione dall'esterno gira come processo a sé e parla con l'applicazione attraverso un punto di ingresso in `app/src/doors/`, per esempio un server MCP, con le stesse regole di qualsiasi altro punto di ingresso. Dentro l'applicazione è un punto di ingresso, non un plugin.
+
+## 24. Cronologia delle versioni
 
 | Versione | Data | Modifiche |
 |---|---|---|
+| 1.3 | 25 ottobre 2026 | Sezione 23, *Plugin*, facoltativa: quando una funzionalità è un plugin, il manifest in `plugin.rs`, slice base che non importano mai slice di plugin, tre punti di estensione (ascoltare, rispondere a un hook, avere il proprio punto di ingresso), gli hook come l'unico trait ammesso con una sola implementazione, una sola build con la scelta in un file letto all'avvio, `Result<…, PluginOff>` in `AppState`, il confine con il front-end, un plugin nel proprio crate, test con tutti i plugin disattivati, trasformare una slice esistente in un plugin, `checks/slat-plugins.sh` e le estensioni dall'esterno come punti di ingresso. Vocabolario: plugin, slice base, hook. L'albero decisionale (17.8) e la sezione per la guida per chi contribuisce (18) citano i plugin. La cronologia delle versioni passa dalla sezione 23 alla sezione 24; le sezioni da 1 a 22 mantengono i loro numeri. |
 | 1.2 | 25 ottobre 2026 | Sezione 22, *Tempi di build e di test*: dove va il tempo di compilazione, impostazioni di build (compresi `strip = false` e le dipendenze di test ottimizzate), un solo insieme di feature, eseguire i test che una modifica può toccare, un `target/` separato per ogni copia di lavoro avviato da un clone copy-on-write, CI con una cache scritta solo da `main`, cosa fa ripartire una build da capo e ripulire `target/`. Driver nativi pesanti in un crate da cui `core` non dipende (5.3). Nuove sottosezioni 14.3 (mutanti nel diff), 14.4 (test di proprietà per `update`) e 16.5 (Clippy, `cargo-deny`, `ast-grep`). Check per le regole che non ne avevano: purezza di `logic.rs`, il `mod.rs` di una slice, cicli tra slice, il comando di 10 righe, `unwrap()` e `panic!`. Punti di giunzione sui dati preferiti a una feature `fake`. Corretti il costo di un crate (5.2, 5.3), `resolver = "3"` per l'edizione 2024 (5.1), il passo della cache nel job di piattaforma (16.3). La cronologia delle versioni passa dalla sezione 22 alla sezione 23; le sezioni da 1 a 21 mantengono i loro numeri. |
 | 1.1 | 25 ottobre 2026 | Sezione 12, *Piattaforme*: la cartella `platform/` in `drivers`, i contratti di piattaforma, i divieti fuori da `platform/`, le regole per percorsi, file e testo, i test di piattaforma, il job CI di compilazione su Linux e Windows, la ricetta per il port. Aggiunte a tier, applicazione delle regole, ricette e albero decisionale. |
 | 1.0 | 24 ottobre 2026 | Prima versione: tier, slice con layer fissi, regole di import, flussi di dati, attori, lo stato dell'applicazione come composition root, errori, test, limiti di dimensione, applicazione delle regole, ricette e migrazione. |

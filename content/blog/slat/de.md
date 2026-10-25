@@ -6,7 +6,7 @@ Diese Seite ist die vollständige Referenz. Sie ist so geschrieben, dass ein Tea
 
 Die Abschnittsnummern sind stabil. Ein Repository, das SLAT folgt, hält in `docs/slat/SLAT.md` eine kurze Kopie der Regeln mit denselben Nummern, sodass ein Verweis wie „Abschnitt 17.8“ auf dieser Seite und im Repository dasselbe bedeutet. Weichen die beiden voneinander ab, werden beide am selben Tag korrigiert. Ein neuer Abschnitt kommt direkt vor die Versionshistorie, die immer der letzte Abschnitt bleibt.
 
-> **Version 1.2** · 25. Oktober 2026. Version 1.2 ergänzt Abschnitt 22, *Build- und Testzeit*: wohin die Kompilierzeit in einem SLAT-Workspace geht, welche Einstellungen sie verkürzen wie nur die Tests laufen, die eine Änderung betreffen kann, und was einen Build neu beginnen lässt, obwohl er das nicht sollte. Außerdem bekommt jede Regel des Leitfadens einen Check, auch die Reinheit von `logic.rs`, Zyklen zwischen Slices und der 10-Zeilen-Command. Die vollständige Historie steht in Abschnitt 23.
+> **Version 1.3** · 25. Oktober 2026. Version 1.3 ergänzt Abschnitt 23, *Plugins*, einen optionalen Teil für Produkte, in denen Features ein- und ausgeschaltet werden können: wann ein Feature ein Plugin ist, die eine Regel zur Richtung (ein Basis-Slice importiert nie einen Plugin-Slice), Erweiterungspunkte, ein einziger Build mit einem Schalter beim Start und die Checks, die das ehrlich halten. Ein Workspace ohne Plugins braucht keine Änderung. Die vollständige Historie steht in Abschnitt 24.
 
 ## 1. Warum es SLAT gibt
 
@@ -87,6 +87,9 @@ Sechs Sätze zum Merken:
 | **Event** (Ereignis) | Das Backend teilt dem Frontend ungefragt mit, dass sich etwas geändert hat. | Ein Push in einen Store |
 | **Platform** (Plattform) | Ein Betriebssystem, für das wir bauen: `macos`, `linux`, `windows`. | Ein Browser-Target |
 | **Platform Contract** (Plattformvertrag) | Eine Funktion in `drivers::platform`, die auf jedem Betriebssystem dasselbe bedeutet. | Ein Polyfill |
+| **Plugin** | Ein Feature, das Nutzerinnen und Nutzer ein- oder ausschalten können: ein oder mehrere Slices mit einem Manifest (Abschnitt 23, optional). | Eine per Lazy Loading geladene Feature-Bibliothek |
+| **Base Slice** (Basis-Slice) | Ein Slice, der immer eingeschaltet ist; er importiert nie einen Plugin-Slice. | Eine Shell-Bibliothek |
+| **Hook** | Ein Erweiterungspunkt, den ein Basis-Slice anbietet und auf den Plugins mit Daten antworten. | Ein Injection Token mit `multi: true` |
 
 Drei dieser Begriffe verwechselt man leicht, deshalb dieses Bild: **Tiers sind die Stockwerke eines Gebäudes, Slices sind die Wohnungen im Stockwerk `core`, und Layer sind die Zimmer in jeder Wohnung.**
 
@@ -1241,6 +1244,7 @@ Ist es eine reine Entscheidung oder eine Berechnung?                      → co
 Ist es ein Domänentyp?                                                    → core/<s>/model.rs
 Ist es eine Abfolge von Schritten mit I/O?                                → core/<s>/service.rs
 Ist es Zustand, der im Hintergrund lebt und den das Fenster beobachtet?   → core/<s>/actor/
+Lässt es sich abschalten, während der Rest weiterläuft?                   → ein Plugin-Slice (Abschnitt 23)
 Hat es gar keine Domäne (Zeit, Pfade, IDs, Dateien)?                      → kit
 ```
 
@@ -1257,9 +1261,9 @@ Agenten verändern auch, wie ein Workspace gebaut wird. Mehrere Agenten in mehre
 Ein Abschnitt, den Sie in den Leitfaden für Mitwirkende Ihres Repositorys kopieren können (`AGENTS.md`, `CLAUDE.md` oder Gleichwertiges):
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1268,6 +1272,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1760,10 +1766,218 @@ Cargo löscht nie alte Artefakte. Jeder Branch, jeder Feature-Satz und jede Vers
 
 Machen Sie daraus eine Regel, keine Rettungsaktion: Wenn `target/debug/deps` einige Zehntausend Dateien überschreitet oder `target/` einige Dutzend Gigabyte, führen Sie `cargo clean` aus und nehmen Sie einen kalten Build in Kauf. `cargo sweep --time 30` ist die sanftere Möglichkeit: Es entfernt nur die Artefakte, die 30 Tage lang nicht verwendet wurden. Eine Arbeitskopie, die entfernt wird, nimmt ihr `target/` mit.
 
-## 23. Versionshistorie
+## 23. Plugins
+
+*Neu in Version 1.3. Optional.* Ein Produkt, das keine Plugins braucht, überspringt diesen Abschnitt. Kein anderer Abschnitt hängt von ihm ab, und ein Workspace ohne Plugins folgt SLAT vollständig.
+
+Ein Plugin ist ein Feature, das Nutzerinnen und Nutzer ein- oder ausschalten können, während der Rest des Produkts genauso weiterarbeitet. So bleibt ein Produkt standardmäßig klein und wächst nach Wahl. In SLAT ist ein Plugin keine neue Art von Code. Es ist ein Slice oder einige wenige, mit einem Manifest und einer zusätzlichen Regel für die Richtung der Importe. Jedes Plugin wird in die Anwendung kompiliert: Ein ausgeschaltetes Plugin wird beim Start nicht zusammengesetzt, fehlt aber nicht im Build.
+
+:::diagram plugins
+
+### 23.1. Wann ein Feature ein Plugin ist
+
+Machen Sie ein Feature nur dann zu einem Plugin, wenn **alle drei** Bedingungen zutreffen:
+
+1. Das Produkt ist auch ohne das Feature nützlich.
+2. Beim Ausschalten gehen keine Daten verloren, und kein anderes Feature bricht, außer den Plugins, die erklärt haben, dass sie es brauchen.
+3. Es entscheidet, wer das Produkt nutzt, nicht der Build, die Plattform oder der Release-Kanal.
+
+| Kandidat | 1 | 2 | 3 | Ergebnis |
+|---|---|---|---|---|
+| Aufgaben aus Besprechungen mit einem Board des Teams synchronisieren | ja | ja | ja | Plugin |
+| eine Begleit-App für das Telefon | ja | ja | ja | Plugin |
+| die Aufnahme | nein, sie ist das Produkt | — | — | Basis-Slice |
+| ein Feature, das das Team noch testet | ja | ja | nein, das Team entscheidet | eine Einstellung, kein Plugin |
+| ein Menü, das es nur unter macOS gibt | — | — | nein, die Plattform entscheidet | Abschnitt 12 |
+| ein Build mit zusätzlichem Logging | — | — | nein, der Build entscheidet | ein Cargo-Profil |
+
+Dieser Abschnitt verwendet zwei Begriffe für die Slices in `core`. Ein **Basis-Slice** ist immer eingeschaltet. Ein **Plugin-Slice** gehört zu einem Plugin. Beide liegen im Tier `core`: „Basis“ sagt etwas über das Produkt, „core“ über das Crate.
+
+### 23.2. Aufbau
+
+Ein Plugin-Slice hat den Aufbau aus Abschnitt 6 und in jedem Tier eine Datei mehr:
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+Ein Plugin mit mehreren Slices hält sein Manifest in dem Slice, der seinen Namen trägt, und die anderen sind Sub-Slices dieses Slice (6.1).
+
+Das Manifest ist eine Konstante:
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`, `PluginId`, die Datei, die sich merkt, welche Plugins eingeschaltet sind, und die Entscheidung, welche Plugins zusammen eingeschaltet sein können, gehören einem Basis-Slice, `core/src/plugin/`. Er hat die üblichen Dateien und keine `plugin.rs`, weil er selbst kein Plugin ist. Nur `app` führt jedes Manifest auf, weil nur `app` jeden Slice kennen darf. Die Liste liegt in `app/src/plugins.rs`:
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. Richtung
+
+Die Regel, die Plugins funktionieren lässt: **Ein Basis-Slice importiert nie einen Plugin-Slice.**
+
+| Von | Darf importieren |
+|---|---|
+| einem Basis-Slice | andere Basis-Slices |
+| einem Plugin-Slice | Basis-Slices; einen anderen Plugin-Slice nur, wenn dieses Plugin in seinen `needs` steht |
+| `app` | alles |
+
+Ein Basis-Slice nennt auch kein Plugin beim Namen: kein `if on.contains("board")`, keine Plugin-ID in einem String. Braucht die Basis die Hilfe eines Plugins, bietet sie einen Erweiterungspunkt an (23.4) und weiß nicht, wer antwortet. Mit allen Plugins ausgeschaltet kompiliert die Basis, startet und besteht ihre Tests (23.8). Das macht „aus“ ehrlich. Einen Button zu verstecken, während die Basis weiter den Code des Plugins aufruft, ist nicht aus.
+
+`needs` hat keine Zyklen, aus demselben Grund wie in 7.2.
+
+### 23.4. Erweiterungspunkte
+
+Ein Plugin erreicht die Basis auf drei Wegen. Ziehen Sie sie in dieser Reihenfolge vor.
+
+**1. Zuhören.** Die Basis veröffentlicht bereits, was sich ändert, über ihren `Snapshot`- oder `Event`-Kanal (8.3). Ein Plugin abonniert ihn in seinem eigenen Service oder Actor, und die Basis ändert sich überhaupt nicht. Beispiel: Das Board-Plugin abonniert fertige Zusammenfassungen und macht aus ihren Aufgaben Karten.
+
+**2. Auf einen Hook antworten.** Wenn die Basis an einer Stelle ihres eigenen Ablaufs etwas fragen muss („Gibt es etwas, das zu dieser Zusammenfassung hinzukommt?“), deklariert der Basis-Slice einen Hook in seiner `hooks.rs`, und jedes Plugin antwortet darauf in seiner eigenen `hooks.rs`:
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+Der Service des Basis-Slice bekommt seine Hooks, wenn `app` ihn zusammensetzt, als `Vec<Arc<dyn SummaryNotes>>`, und fragt jeden davon. Ist das Plugin ausgeschaltet, ist die Liste leer, und die Basis tut, was sie tat, bevor es Plugins gab.
+
+Drei Regeln für Hooks:
+
+- **Ein Hook antwortet mit Daten, sofort, ohne I/O.** Er ist nicht `async`. Ein Plugin, das für die Antwort das Netzwerk oder einen Prozess braucht, hält die Antwort in seinem eigenen Service oder Actor bereit (hier den neuesten Snapshot der Karten), und der Hook liest sie. Die Basis wartet nie auf ein Plugin, deshalb kann ein langsames Plugin die Basis nicht verlangsamen.
+- **Ein Hook entscheidet nicht für die Basis.** Er liefert Material, und was damit geschieht, ist eine Entscheidung in der `logic.rs` des Basis-Slice. Ein Hook, der etwas ablehnen könnte (eine Zugriffsprüfung, ein Budget), ist eine Richtlinie, und eine Richtlinie ist ein Basis-Slice (6.5): Plugins fügen ihr Regeln als Daten hinzu, und der Basis-Slice entscheidet.
+- **Ein Hook-Trait ist der einzige erlaubte Trait mit nur einer Implementierung.** Abschnitt 4 und 14.2 verbieten einen Trait, solange es keine zwei Implementierungen gibt, weil er bis dahin nichts abstrahiert. Ein Hook ist anders: Ohne ihn müsste die Basis das Plugin importieren. Jeder Hook-Trait liegt in einer `hooks.rs`, sodass die Ausnahme leicht zu finden und zu prüfen ist (23.10).
+
+**3. Den Einstiegspunkt besitzen.** Die Commands, DTOs, Events und Türen (`doors/`) des Plugins liegen in `app/src/<plugin>/`, wie die jedes anderen Slice. Die Basis ruft sie nie auf.
+
+### 23.5. Ein und aus
+
+- **Ein einziger Build.** Ein Plugin ist kein Cargo-Feature. Ein Feature pro Plugin macht jede Kombination von Plugins zu einem eigenen Build mit einem eigenen Satz Tests (22.3), und wer das Produkt nutzt, kann ein Cargo-Feature nicht umschalten.
+- **Die Wahl ist eine Datei.** Der Slice `plugin` hält die Menge der eingeschalteten Plugins in einer Datei unter `kit::paths::config()` und liest sie einmal beim Start. Fehlt die Datei, gilt für jedes Plugin sein `on_by_default`.
+- **`app` setzt nur zusammen, was eingeschaltet ist.** Ein ausgeschaltetes Plugin hat keinen Service, keinen Actor, keinen Hook und keine Event-Schleife. Sein Feld in `AppState` sagt das, in derselben Form wie das Konto in Abschnitt 11:
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+`on.start` gibt `Err(PluginOff)` zurück, ohne die Closure aufzurufen, wenn das Plugin ausgeschaltet ist.
+
+- **Die Commands eines ausgeschalteten Plugins bleiben registriert.** `generate_handler!` steht fest, wenn die Anwendung kompiliert wird, also existiert der Command und antwortet. `From<PluginOff> for IpcError` (Abschnitt 13) gibt dem Fenster den Code `plugin_off`, und der Command hat weiterhin eine Zeile Logik: `state.boards.as_ref()?.send(…)`.
+- **Eine Änderung wirkt beim nächsten Start**, und das Fenster sagt das in einem Satz. Live umzuschalten heißt, dass die Registry der Plugins zu einem Actor wird (sie besteht alle drei Fragen aus 9.1) und sich jede Hook-Liste ändern kann, während die Basis läuft. Tun Sie das nur, wenn ein Neustart ein echtes Problem ist.
+- **Aus löscht nie.** Die Dateien des Plugins bleiben, wo sie sind, seine Tabellen bleiben im Schema, und die Migrationen jedes Plugins laufen, ob es eingeschaltet ist oder nicht, sodass das Schema für jede Kombination gleich ist. Die Daten eines Plugins zu entfernen ist eine eigene Aktion, die ausdrücklich angefordert wird.
+- **`needs` ist eine reine Funktion.** `plugin::logic::resolve(manifests, wanted)` gibt die Menge der Plugins zurück, die eingeschaltet sein dürfen, oder die fehlende Abhängigkeit. Ein Plugin einzuschalten, dessen Abhängigkeit ausgeschaltet ist, oder ein Plugin auszuschalten, das ein anderes braucht, wird mit einem Satz abgelehnt, der das andere Plugin nennt. Dann werden beide umgeschaltet.
+
+### 23.6. Frontend
+
+SLAT schreibt das Frontend nicht vor (1.2), nur die Grenze, und ein Plugin überquert sie wie jeder andere Slice. Der Slice `plugin` hat eine Query, `plugin_list`, die jedes Manifest mit seinem Zustand zurückgibt, und das Frontend zeigt die Bildschirme eines Plugins nur, wenn es eingeschaltet ist. Der Frontend-Ordner eines Plugins trägt den Namen des Plugins, wie in Abschnitt 6. Ein Bildschirm eines ausgeschalteten Plugins wird gar nicht gerendert; ihn zu rendern und per Style zu verstecken, ist nicht aus.
+
+### 23.7. Ein Plugin in einem eigenen Crate
+
+Wenn ein Plugin teuer zu kompilieren ist (5.3) oder statt eines Checks der Compiler über 23.3 wachen soll, verschieben Sie es nach `<product>-plugin-<name>`. Es hängt von `core` ab, `core` hängt nicht von ihm ab, und `app` hängt von beiden ab. Die Regel aus 23.3 steht dann in `Cargo.toml`, wie in 5.1, und `wrappers` in `deny.toml` (16.5) hält jedes andere Crate davon fern. Es zählt zu den sechs bis acht Crates aus 5.3, also tun Sie das für ein schweres Plugin, nicht für jedes Plugin.
+
+### 23.8. Testen
+
+| Was | Wie | Was als Beweis zählt |
+|---|---|---|
+| die Basis ohne Plugins | `AppState`, zusammengesetzt mit allen Plugins ausgeschaltet; die End-to-End-Tests der Basis | die Sätze, die ein Mensch in der Basis sieht, unverändert |
+| `plugin::logic::resolve` | ein einfaches `#[test]` | die Menge der Plugins oder die fehlende Abhängigkeit |
+| der Hook eines Plugins | ein einfaches `#[test]` auf seiner Implementierung, mit einem Snapshot-Wert | die zurückgegebenen Daten |
+| ein Ablauf der Basis mit einem Hook | der Service der Basis mit einem Hook, der im Testmodul geschrieben ist | die Basis hat verwendet, was der Hook zurückgegeben hat |
+| ein Command eines ausgeschalteten Plugins | über den Einstiegspunkt | der Satz, den das Fenster für `plugin_off` zeigt |
+
+Der im Testmodul geschriebene Hook ist die zweite Implementierung des Hook-Traits, deshalb ist ein Hook die am leichtesten zu testende Art von Erweiterungspunkt.
+
+### 23.9. Einen bestehenden Slice in ein Plugin verwandeln
+
+1. **Messen.** Nehmen Sie die Kanten aus dem Zyklen-Check aus 16.4 und listen Sie jeden Basis-Slice auf, der den Kandidaten importiert. Diese Kanten sind die Baseline des Plugin-Checks (16.1).
+2. **Jede Kante umkehren**, ein Pull Request nach dem anderen: Die Basis veröffentlicht, und das Plugin hört zu (die erste Wahl), oder die Basis deklariert einen Hook, und das Plugin antwortet darauf. Verschiebungen und Korrekturen bleiben in getrennten Pull Requests (19.2).
+3. **Das Manifest hinzufügen**, seine Zeile in `PLUGINS` und das Feld `Result<…, PluginOff>` in `AppState`. Setzen Sie `on_by_default: true`, damit alle, die das Feature heute nutzen, es behalten.
+4. **Beweisen.** Wenn die Baseline leer ist, führen Sie die Tests der Basis mit allen Plugins ausgeschaltet aus (23.8). Erst dann darf das Plugin ausgeschaltet werden.
+
+### 23.10. Durchsetzung
+
+| Regel | Wer sie durchsetzt |
+|---|---|
+| ein Basis-Slice importiert nie einen Plugin-Slice | `checks/slat-plugins.sh`, unten; oder `Cargo.toml` für ein Plugin in einem eigenen Crate (23.7) |
+| ein Plugin-Slice importiert ein anderes Plugin nur, wenn es in seinen `needs` steht | derselbe Check, gegen die `needs` der Manifeste |
+| keine Plugin-ID in einem Basis-Slice | ein Grep-Check auf `PluginId(` in Basis-Slices außerhalb von `core/src/plugin/` |
+| ein Trait in `core` mit nur einer Implementierung ist ein Hook in einer `hooks.rs` | eine `ast-grep`-Regel für `trait`-Elemente in `core` außerhalb von `hooks.rs` (16.5), mit einer Baseline-Liste; jeder Trait auf der Liste hat zwei Implementierungen (14.2) |
+| jedes Manifest steht in `PLUGINS` | ein Check, der die Ordner mit einer `plugin.rs` mit `app/src/plugins.rs` vergleicht, wie `slat-registered.sh` |
+| die Basis funktioniert mit allen Plugins ausgeschaltet | der Test aus 23.8, in der CI |
+
+Plugin-Slices sind die Ordner, die eine `plugin.rs` haben. Der Check verwendet die Kanten des Zyklen-Checks wieder:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+Während ein Slice in ein Plugin verwandelt wird (23.9), zieht der Check seine Baseline ab, wie in 16.1.
+
+### 23.11. Plugins von außen
+
+Code, den jemand anderes geschrieben hat und der geladen wird, während die Anwendung läuft, liegt außerhalb von SLAT. Rust hat keine stabile binäre Schnittstelle, und Code, der in den Prozess geladen wird, kann die ganze Anwendung mit sich reißen. Eine Erweiterung von außen läuft als eigener Prozess und spricht mit der Anwendung über einen Einstiegspunkt in `app/src/doors/`, zum Beispiel einen MCP-Server, mit denselben Regeln wie jeder andere Einstiegspunkt. Innerhalb der Anwendung ist sie ein Einstiegspunkt, kein Plugin.
+
+## 24. Versionshistorie
 
 | Version | Datum | Änderungen |
 |---|---|---|
+| 1.3 | 25. Oktober 2026 | Abschnitt 23, *Plugins*, optional: wann ein Feature ein Plugin ist, das Manifest in `plugin.rs`, Basis-Slices, die nie Plugin-Slices importieren, drei Erweiterungspunkte (zuhören, auf einen Hook antworten, den Einstiegspunkt besitzen), Hooks als einziger erlaubter Trait mit nur einer Implementierung, ein einziger Build mit der Wahl in einer Datei, die beim Start gelesen wird, `Result<…, PluginOff>` in `AppState`, die Grenze zum Frontend, ein Plugin in einem eigenen Crate, Tests mit allen Plugins ausgeschaltet, das Verwandeln eines bestehenden Slice in ein Plugin, `checks/slat-plugins.sh` und Erweiterungen von außen als Einstiegspunkte. Begriffe: Plugin, Basis-Slice, Hook. Der Entscheidungsbaum (17.8) und der Abschnitt für den Leitfaden für Mitwirkende (18) erwähnen Plugins. Die Versionshistorie wandert von Abschnitt 23 nach Abschnitt 24; die Abschnitte 1 bis 22 behalten ihre Nummern. |
 | 1.2 | 25. Oktober 2026 | Abschnitt 22, *Build- und Testzeit*: wohin die Kompilierzeit geht, Build-Einstellungen (einschließlich `strip = false` und optimierter Test-Abhängigkeiten), ein einziger Feature-Satz, Ausführen der Tests, die eine Änderung betreffen kann, ein eigenes `target/` für jede Arbeitskopie, gestartet aus einem Copy-on-Write-Klon, CI mit einem Cache, der nur von `main` geschrieben wird, was einen Build neu beginnen lässt, und das Aufräumen von `target/`. Schwere native Driver in einem Crate, von dem `core` nicht abhängt (5.3). Neue Unterabschnitte 14.3 (Mutanten im Diff), 14.4 (Property-Tests für `update`) und 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checks für Regeln, die keinen hatten: Reinheit von `logic.rs`, die `mod.rs` eines Slice, Zyklen zwischen Slices, der 10-Zeilen-Command, `unwrap()` und `panic!`. Datennähte werden einem Feature `fake` vorgezogen. Korrigiert: die Kosten eines Crates (5.2, 5.3), `resolver = "3"` für Edition 2024 (5.1), der Cache-Schritt im Plattform-Job (16.3). Die Versionshistorie wandert von Abschnitt 22 nach Abschnitt 23; die Abschnitte 1 bis 21 behalten ihre Nummern. |
 | 1.1 | 25. Oktober 2026 | Abschnitt 12, *Plattformen*: der Ordner `platform/` in `drivers`, Plattformverträge, Verbote außerhalb von `platform/`, Regeln für Pfade, Dateien und Text, Plattformtests, CI-Kompilier-Job auf Linux und Windows, Rezept für Portierungen. Ergänzungen zu Tiers, Durchsetzung, Rezepten und dem Entscheidungsbaum. |
 | 1.0 | 24. Oktober 2026 | Erste Version: Tiers, Slices mit festen Layern, Importregeln, Datenflüsse, Actors, der Anwendungszustand als Composition Root, Fehler, Tests, Größengrenzen, Durchsetzung, Rezepte und Migration. |

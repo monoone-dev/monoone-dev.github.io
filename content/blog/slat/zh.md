@@ -6,7 +6,7 @@ SLAT 是一种组织桌面应用后端的模式，适用于用 Rust 编写、以
 
 各节编号是固定的。遵循 SLAT 的仓库会在 `docs/slat/SLAT.md` 中保存一份使用相同编号的规则简版，因此像“第 17.8 节”这样的引用，在本页和仓库中指的是同一处内容。两者不一致时，在同一天内一起修正。新的一节总是加在版本历史之前，版本历史始终位于最后。
 
-> **版本 1.2** · 2026年10月25日。1.2 版新增第 22 节 *构建和测试时间*：SLAT 工作区中的编译时间花在哪里、能缩短它的设置、如何只运行一次改动可能影响到的测试，以及哪些情况会让构建在不该重来时从头开始。它还为本指南的每条规则都配上了检查，包括 `logic.rs` 的纯度、切片之间的循环和 10 行命令。完整历史见第 23 节。
+> **版本 1.3** · 2026年10月25日。1.3 版新增第 23 节 *插件*，这是一个可选部分，面向允许用户开启和关闭功能的产品：什么时候一个功能是插件、关于方向的唯一一条规则（基础切片从不导入插件切片）、扩展点、一次构建加启动时的开关，以及让这一切名副其实的检查。没有插件的工作区无需任何改动。完整历史见第 24 节。
 
 ## 1. SLAT 为什么存在
 
@@ -87,6 +87,9 @@ Event:    actor/service ─► Snapshot | Event ─► app/events ─emit─► 
 | **事件（Event）** | 后端在未被请求的情况下告知前端某些东西发生了变化。 | 推送到 store |
 | **平台（Platform）** | 我们为之构建的操作系统：`macos`、`linux`、`windows`。 | 浏览器目标 |
 | **平台契约（Platform contract）** | `drivers::platform` 中的一个函数，在每个操作系统上含义相同。 | polyfill |
+| **插件（Plugin）** | 用户可以开启或关闭的功能：一个或多个带清单（manifest）的切片（第 23 节，可选）。 | 懒加载的功能库 |
+| **基础切片（Base slice）** | 始终开启的切片；它从不导入插件切片。 | shell 库 |
+| **钩子（Hook）** | 基础切片提供、由插件用数据回应的扩展点。 | 带 `multi: true` 的注入令牌 |
 
 其中有三个概念容易混淆，所以请记住这个画面：**层级是一栋楼的楼层，切片是 `core` 这一层上的公寓，层是每套公寓里的房间。**
 
@@ -1240,6 +1243,7 @@ deny = [
 它是领域类型吗？                            → core/<s>/model.rs
 它是带 I/O 的一系列步骤吗？                 → core/<s>/service.rs
 它是在后台存活、由窗口观察的状态吗？        → core/<s>/actor/
+用户能否关闭它，而其余部分照常工作？        → 插件切片 (第 23 节)
 它完全没有领域（时间、路径、ID、文件）吗？  → kit
 ```
 
@@ -1256,9 +1260,9 @@ SLAT 是在一个大量代码由编码智能体编写的团队中设计出来的
 一段可以复制到你仓库贡献者指南（`AGENTS.md`、`CLAUDE.md` 或类似文件）中的内容：
 
 ```markdown
-## Backend layout: SLAT 1.2
+## Backend layout: SLAT 1.3
 
-The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.2.
+The backend follows SLAT (Slice · Layer · Actor · Tier), version 1.3.
 Reference: https://monoone.dev/blog/slat/
 
 - Tiers: app → core → store/drivers → kit. Only `app` depends on tauri.
@@ -1267,6 +1271,8 @@ Reference: https://monoone.dev/blog/slat/
 - A Tauri command has at most 10 lines and calls one function of its slice.
 - Background state belongs to an actor: Msg → update (pure) → Effect.
 - Operating-system code only in `drivers/src/platform/`.
+- If the product has plugins: a base slice never imports a plugin slice
+  (SLAT section 23).
 - Before adding code, find its place with the decision tree (SLAT section 17.8,
   https://monoone.dev/blog/slat/recipes/).
 - Checks in `checks/slat-*.sh` enforce this. Do not edit a check to make it pass;
@@ -1759,10 +1765,218 @@ Cargo 从不删除旧的产物。每个分支、每组 feature 和每个依赖�
 
 把它当作规则，而不是救急手段：当 `target/debug/deps` 超过几万个文件，或 `target/` 超过几十 GB 时，运行 `cargo clean`，接受一次冷构建。`cargo sweep --time 30` 是更温和的选择：它只删除 30 天内没有用过的产物。被删除的工作副本会连同它的 `target/` 一起消失。
 
-## 23. 版本历史
+## 23. 插件
+
+*1.3 版新增。可选。* 不需要插件的产品可以跳过本节。其他任何一节都不依赖它，没有插件的工作区也完全遵循 SLAT。
+
+插件是用户可以开启或关闭、而产品其余部分照常工作的功能。它让产品默认保持小巧，按用户的选择增长。在 SLAT 中，插件不是一种新的代码。它是一个或几个切片，加上一份清单（manifest），以及一条关于导入方向的额外规则。每个插件都编译进应用：关闭一个插件，意味着它在启动时不被组装，而不是它不在构建中。
+
+:::diagram plugins
+
+### 23.1. 什么时候一个功能是插件
+
+只有当以下**三条全部**成立时，才把一个功能做成插件：
+
+1. 没有它，产品依然有用；
+2. 关闭它不会丢失数据，也不会破坏其他功能，声明了需要它的插件除外；
+3. 由用户决定，而不是由构建、平台或发布渠道决定。
+
+| 候选 | 1 | 2 | 3 | 结论 |
+|---|---|---|---|---|
+| 把待办事项同步到团队看板 | 是 | 是 | 是 | 插件 |
+| 手机伴侣应用 | 是 | 是 | 是 | 插件 |
+| 录音 | 否，它就是产品本身 | — | — | 基础切片 |
+| 团队仍在测试的功能 | 是 | 是 | 否，由团队决定 | 一项设置，而不是插件 |
+| 只在 macOS 上存在的菜单 | — | — | 否，由平台决定 | 第 12 节 |
+| 带额外日志的构建 | — | — | 否，由构建决定 | Cargo profile |
+
+本节用两个词来称呼 `core` 中的切片。**基础切片**始终开启。**插件切片**属于某个插件。两者都位于 `core` 层级：“基础”说的是产品，“core”说的是 crate。
+
+### 23.2. 布局
+
+插件切片采用第 6 节的布局，并在每个层级多一个文件：
+
+```tree
+core/src/<plugin>/
+  plugin.rs     the manifest: id, what it needs, whether it starts on
+  hooks.rs      its answers to the hooks of base slices, 23.4
+  mod.rs  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/<plugin>/
+  mod.rs  commands.rs  dto.rs  events.rs
+```
+
+包含多个切片的插件，把清单放在以插件命名的那个切片中，其他切片是它的子切片（6.1）。
+
+清单是一个常量：
+
+```rust
+pub const PLUGIN: Plugin = Plugin {
+    id: PluginId("board"),
+    needs: &[PluginId("account")],
+    on_by_default: false,
+};
+```
+
+`Plugin`、`PluginId`、记录哪些插件已开启的文件，以及哪些插件可以同时开启的决策，都属于一个基础切片 `core/src/plugin/`。它有通常的文件，但没有 `plugin.rs`，因为它本身不是插件。只有 `app` 列出所有清单，因为只有 `app` 可以知道所有切片。这份列表位于 `app/src/plugins.rs`：
+
+```rust
+pub const PLUGINS: &[Plugin] = &[account::PLUGIN, board::PLUGIN, companion::PLUGIN];
+```
+
+### 23.3. 方向
+
+让插件得以成立的规则：**基础切片从不导入插件切片。**
+
+| 来源 | 可以导入 |
+|---|---|
+| 基础切片 | 其他基础切片 |
+| 插件切片 | 基础切片；另一个插件切片，仅当该插件在它的 `needs` 中 |
+| `app` | 一切 |
+
+基础切片也不提及插件的名字：没有 `if on.contains("board")`，字符串中也没有插件 id。当基础需要插件帮忙时，它提供一个扩展点（23.4），并且不知道由谁来回应。所有插件都关闭时，基础照样能编译、启动并通过它的测试（23.8）。这让“关闭”名副其实。基础仍在调用插件的代码、只是把按钮藏起来，并不是关闭。
+
+`needs` 中没有循环，理由与 7.2 相同。
+
+### 23.4. 扩展点
+
+插件通过三种方式接入基础。按以下顺序优先选择。
+
+**1. 监听。** 基础已经通过它的 `Snapshot` 或 `Event` 通道发布变化（8.3）。插件在自己的服务或 Actor 中订阅，基础完全不需要改动。例如：看板插件订阅已完成的摘要，把其中的待办事项变成卡片。
+
+**2. 回应钩子。** 当基础必须在自身流程中的某一点提问时（“这份摘要还有什么要补充的吗？”），基础切片在它的 `hooks.rs` 中声明一个钩子，每个插件在自己的 `hooks.rs` 中回应它：
+
+```rust
+pub trait SummaryNotes: Send + Sync {
+    fn notes(&self, summary: &Summary) -> Vec<Note>;
+}
+```
+
+```rust
+pub struct BoardNotes {
+    cards: board::Handle,
+}
+
+impl summary::SummaryNotes for BoardNotes {
+    fn notes(&self, summary: &summary::Summary) -> Vec<summary::Note> {
+        self.cards.current().for_summary(summary.id).map(Into::into).collect()
+    }
+}
+```
+
+基础切片的服务在 `app` 组装它时接收自己的钩子，形式为 `Vec<Arc<dyn SummaryNotes>>`，并逐个询问。插件关闭时，列表为空，基础的行为与插件出现之前完全一样。
+
+钩子的三条规则：
+
+- **钩子立即用数据回答，不做 I/O。** 它不是 `async`。需要网络或进程才能回答的插件，在自己的服务或 Actor 中把答案准备好（这里是卡片的最新快照），钩子只读取它。基础从不等待插件，所以慢的插件拖慢不了基础。
+- **钩子不替基础做决定。** 它返回材料，如何处理这些材料，是基础切片 `logic.rs` 中的决策。可能拒绝某件事的钩子（访问门控、预算）就是策略，而策略是一个基础切片（6.5）：插件以数据的形式给它添加规则，由基础切片做决定。
+- **钩子 trait 是唯一允许只有一个实现的 trait。** 第 4 节和 14.2 禁止在出现两个实现之前写 trait，因为在那之前它什么也没有抽象。钩子不同：没有它，基础就不得不导入插件。每个钩子 trait 都位于一个 `hooks.rs` 中，所以这个例外很容易找到，也很容易检查（23.10）。
+
+**3. 拥有入口。** 插件的命令、DTO、事件以及窗口之外的入口（doors）位于 `app/src/<plugin>/` 中，与任何其他切片一样。基础从不调用它们。
+
+### 23.5. 开启与关闭
+
+- **一次构建。** 插件不是 Cargo feature。每个插件一个 feature，会让每种插件组合都成为单独的构建和单独的一套测试（22.3），而且用户无法切换 feature。
+- **选择是一个文件。** `plugin` 切片把已开启的插件集合保存在 `kit::paths::config()` 下的一个文件中，并在启动时读取一次。文件不存在时，每个插件取其 `on_by_default`。
+- **`app` 只组装已开启的部分。** 关闭的插件没有服务、没有 Actor、没有钩子，也没有事件循环。它在 `AppState` 中的字段如实说明这一点，形态与第 11 节中的 account 相同：
+
+```rust
+pub struct AppState {
+    pub recordings: recording::Handle,
+    pub summaries: Arc<summary::SummaryService>,
+    pub boards: Result<board::Handle, PluginOff>,
+    pub companion: Result<Arc<companion::CompanionService>, PluginOff>,
+}
+```
+
+```rust
+let on = plugin::PluginService::load(&paths, PLUGINS)?;
+let boards = on.start(&board::PLUGIN, || board::spawn(board_deps));
+let notes: Vec<Arc<dyn summary::SummaryNotes>> = match &boards {
+    Ok(cards) => vec![Arc::new(board::BoardNotes::new(cards.clone()))],
+    Err(_) => vec![],
+};
+let summaries = Arc::new(summary::SummaryService::new(store.clone(), notes));
+```
+
+插件关闭时，`on.start` 不调用闭包，直接返回 `Err(PluginOff)`。
+
+- **关闭的插件的命令仍然注册。** `generate_handler!` 在应用编译时就已固定，所以命令存在并会作答。`From<PluginOff> for IpcError`（第 13 节）给窗口返回代码 `plugin_off`，命令仍然只有一行逻辑：`state.boards.as_ref()?.send(…)`。
+- **改动在下次启动时生效**，窗口会用一句话说明这一点。实时切换意味着插件注册表变成一个 Actor（它满足 9.1 的全部三个条件），而且每个钩子列表都可能在基础运行时改变。只有当重启确实是个问题时才这样做。
+- **关闭从不删除。** 插件的文件留在原处，它的表留在 schema 中，每个插件的迁移无论它是否开启都会运行，因此每种组合的 schema 都相同。删除插件的数据是用户单独要求的另一个操作。
+- **`needs` 是一个纯函数。** `plugin::logic::resolve(manifests, wanted)` 返回可以开启的插件集合，或缺少的那个依赖。开启一个其所需插件处于关闭状态的插件，或关闭一个被其他插件需要的插件，都会被拒绝，并附上一句点名另一个插件的话。用户把两者都切换。
+
+### 23.6. 前端
+
+SLAT 不规定前端（1.2），只规定边界，而插件跨越边界的方式与任何其他切片相同。`plugin` 切片有一个查询 `plugin_list`，返回每份清单及其状态，前端只在插件开启时显示它的界面。插件的前端文件夹使用插件的名字，与第 6 节一样。关闭的插件的界面根本不渲染；渲染后再用样式隐藏，并不是关闭。
+
+### 23.7. 独立 crate 中的插件
+
+当一个插件编译代价很高（5.3），或者你希望由编译器而不是检查来守护 23.3 时，把它移到 `<product>-plugin-<name>` 中。它依赖 `core`，`core` 不依赖它，`app` 依赖两者。这时 23.3 的规则就写在 `Cargo.toml` 中，与 5.1 一样，而 `deny.toml`（16.5）中的 `wrappers` 让其他所有 crate 远离它。它计入 5.3 中六到八个 crate 的数量，所以只对重型插件这样做，而不是对每个插件都这样做。
+
+### 23.8. 测试
+
+| 测什么 | 如何测试 | 什么算作证明 |
+|---|---|---|
+| 不带插件的基础 | 所有插件关闭时组装的 `AppState`；基础的端到端测试 | 人在基础中看到的文字，保持不变 |
+| `plugin::logic::resolve` | 普通的 `#[test]` | 插件集合，或缺少的依赖 |
+| 插件的钩子 | 对其实现的普通 `#[test]`，使用一个快照值 | 返回的数据 |
+| 带钩子的基础流程 | 基础服务，配上一个写在测试模块中的钩子 | 基础使用了钩子返回的内容 |
+| 关闭的插件的命令 | 通过入口 | 窗口针对 `plugin_off` 显示的那句话 |
+
+写在测试模块中的钩子就是钩子 trait 的第二个实现，所以钩子是最容易测试的扩展点。
+
+### 23.9. 把现有切片变成插件
+
+1. **测量。** 取 16.4 中循环检查的边，列出每个导入候选切片的基础切片。这些边就是插件检查的基线（16.1）。
+2. **反转每条边**，每个 pull request 一条：基础发布、插件监听（首选），或者基础声明一个钩子、插件回应它。移动和修复放在不同的 pull request 中（19.2）。
+3. **添加清单**、它在 `PLUGINS` 中的那一行，以及 `AppState` 中的 `Result<…, PluginOff>` 字段。设置 `on_by_default: true`，让今天使用该功能的人继续拥有它。
+4. **证明它。** 当基线为空时，在所有插件关闭的情况下运行基础的测试（23.8）。只有在那之后，插件才可以被关闭。
+
+### 23.10. 执行机制
+
+| 规则 | 由谁执行 |
+|---|---|
+| 基础切片从不导入插件切片 | 下面的 `checks/slat-plugins.sh`；独立 crate 中的插件则由 `Cargo.toml` 保证（23.7） |
+| 插件切片只在另一个插件位于其 `needs` 中时才导入它 | 同一个检查，对照清单中的 `needs` |
+| 基础切片中没有插件 id | 一个 grep 检查，在 `core/src/plugin/` 之外的基础切片中查找 `PluginId(` |
+| `core` 中只有一个实现的 trait 是 `hooks.rs` 中的钩子 | 一条 `ast-grep` 规则，查找 `core` 中 `hooks.rs` 之外的 `trait` 项（16.5），带基线列表；列表中的每个 trait 都有两个实现（14.2） |
+| 每份清单都在 `PLUGINS` 中 | 一个比对含 `plugin.rs` 的文件夹与 `app/src/plugins.rs` 的检查，类似 `slat-registered.sh` |
+| 所有插件关闭时基础仍能工作 | 23.8 中的测试，在 CI 中运行 |
+
+插件切片就是包含 `plugin.rs` 的文件夹。该检查复用循环检查的边：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+core="crates/quayside-core/src"
+plugins="$(find "$core" -mindepth 2 -maxdepth 2 -name plugin.rs \
+  | sed -E "s#^$core/([a-z_]+)/plugin\.rs#\1#" | sort)"
+edges="$(grep -roE --include='*.rs' 'crate::[a-z_]+' "$core" \
+  | sed -E "s#^$core/([a-z_]+)/[^:]*:crate::([a-z_]+)#\1 \2#" \
+  | awk '$1 != $2 && NF == 2' | sort -u)"
+
+wrong="$(awk 'NR == FNR { plugin[$1] = 1; next } !($1 in plugin) && ($2 in plugin)' \
+  <(printf '%s\n' "$plugins") <(printf '%s\n' "$edges"))"
+if [ -n "$wrong" ]; then
+  printf 'a base slice imports a plugin slice:\n%s\n' "$wrong"
+  echo "listen to what the base publishes, or answer a hook (23.4)"
+  exit 1
+fi
+echo "plugins: $(printf '%s\n' "$plugins" | sed '/^$/d' | wc -l | tr -d ' ') plugin slices, no base slice imports one"
+```
+
+在把切片变成插件的过程中（23.9），检查会减去它的基线，与 16.1 一样。
+
+### 23.11. 来自外部的插件
+
+由别人编写、在应用运行时加载的代码，不在 SLAT 的范围内。Rust 没有稳定的二进制接口，加载进进程的代码可能连带整个应用一起崩溃。来自外部的扩展作为独立进程运行，通过 `app/src/doors/` 中的一个入口与应用通信，例如一个 MCP 服务器，遵循与任何其他入口相同的规则。在应用内部，它是一个入口，而不是插件。
+
+## 24. 版本历史
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| 1.3 | 2026年10月25日 | 第 23 节 *插件*，可选：什么时候一个功能是插件、`plugin.rs` 中的清单、从不导入插件切片的基础切片、三种扩展点（监听、回应钩子、拥有入口）、钩子是唯一允许只有一个实现的 trait、一次构建并把选择放在启动时读取的文件中、`AppState` 中的 `Result<…, PluginOff>`、前端边界、独立 crate 中的插件、所有插件关闭时的测试、把现有切片变成插件、`checks/slat-plugins.sh`，以及作为入口的外部扩展。术语：插件、基础切片、钩子。决策树（17.8）和贡献者指南段落（18）提到了插件。版本历史从第 23 节移到第 24 节；第 1 到 22 节保持原有编号。 |
 | 1.2 | 2026年10月25日 | 第 22 节 *构建和测试时间*：编译时间花在哪里、构建设置（包括 `strip = false` 和经过优化的测试依赖）、一套 feature、运行改动可能影响到的测试、每个工作副本一个独立的 `target/` 并从写时复制克隆启动、只从 `main` 写入缓存的 CI、什么会让构建从头开始，以及清理 `target/`。重型原生驱动放在 `core` 不依赖的 crate 中（5.3）。新增小节 14.3（差异中的变异测试）、14.4（`update` 的属性测试）和 16.5（Clippy、`cargo-deny`、`ast-grep`）。为此前没有检查的规则加上检查：`logic.rs` 的纯度、切片的 `mod.rs`、切片之间的循环、10 行命令、`unwrap()` 和 `panic!`。优先使用数据接缝，而不是 `fake` feature。更正了 crate 的成本（5.2、5.3）、edition 2024 使用 `resolver = "3"`（5.1）、平台任务中的缓存步骤（16.3）。版本历史从第 22 节移到第 23 节；第 1 到 21 节保持原有编号。 |
 | 1.1 | 2026年10月25日 | 第 12 节 *平台*：`drivers` 中的 `platform/` 文件夹、平台契约、`platform/` 之外的禁止项、路径、文件和文本规则、平台测试、Linux 和 Windows 上的 CI 编译任务、移植配方。补充了层级、执行机制、配方和决策树的内容。 |
 | 1.0 | 2026年10月24日 | 第一版：层级、带固定层的切片、导入规则、数据流、Actor、作为组合根的应用状态、错误、测试、规模上限、执行机制、配方和迁移。 |
