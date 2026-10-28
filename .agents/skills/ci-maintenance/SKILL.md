@@ -10,6 +10,7 @@ description: Run, understand, debug and extend this repo's CI gate — `pnpm typ
 ```bash
 pnpm install --frozen-lockfile   # also runs `nuxt prepare` (postinstall) → generates .nuxt types
 pnpm lint:skills                 # every .claude/skills entry is a symlink to .agents/skills
+pnpm test                        # node --test over i18n/*.test.ts (Node 24 strips the types)
 pnpm typecheck                   # nuxt typecheck → vue-tsc over app, server and shared
 pnpm build                       # nuxt build → .output/
 ```
@@ -39,10 +40,22 @@ before every push and before `gh pr create`; never claim green from a run you di
 - **Server/app boundary.** Types shared by `server/` and `app/` live in `shared/types/` and are
   imported from `#shared/...`; importing a server file into the app breaks the typecheck.
 
+## Tests
+
+- `i18n/*.test.ts` run on Node's built-in runner (`node:test`, `node:assert/strict`); Node 24
+  strips the TypeScript types, so there is no test framework to install.
+- `i18n/locales.test.ts` fails when a file in `i18n/locales/` misses or adds a key, empties a message
+  that `en.json` fills, changes a `{placeholder}`, has the wrong number of plural forms (Polish 4,
+  Chinese and Japanese 1, the rest as many as English), or when a blog post lacks an article in a
+  language. The languages come from `shared/locales.ts`, the posts from `shared/blog.ts`.
+- Import modules by relative path with their `.ts` extension. Only files without Nuxt auto-imports
+  or aliases load this way. They sit in `i18n/`, inside the Nuxt app tsconfig, so
+  `pnpm typecheck` checks them like the site code.
+
 ## Add a check
 
 1. Add it as a `package.json` script first (e.g. `"lint": "eslint ."`) so it runs the same locally.
 2. Add one `- run: pnpm <script>` step to `ci.yml`, ordered cheap-before-expensive
-   (lint → typecheck → build).
+   (lint → test → typecheck → build).
 3. Prove it RED before GREEN: introduce a temporary violation, see the step fail, remove it.
 4. New dev dependency or new action → ask the user first. Follow `/github-actions` for the workflow.

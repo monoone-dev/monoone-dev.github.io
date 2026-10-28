@@ -18,7 +18,10 @@ Rules for every person and every coding agent working here:
   directly, admins included. A pull request needs one approval from a code owner
   (`.github/CODEOWNERS`); repository admins may merge their own without one. Every merge to
   `main` deploys the site.
-- **Green before push.** `pnpm typecheck` and `pnpm build` pass locally (the `ci-maintenance` skill).
+- **Green before push.** The gate passes locally (the `ci-maintenance` skill):
+  `pnpm install --frozen-lockfile && pnpm lint:skills && pnpm test && pnpm typecheck && pnpm build`.
+  `pnpm test` runs `i18n/*.test.ts` with Node's built-in test runner (no extra dependencies); it
+  checks that every locale file has the same keys, placeholders and plural forms as `en.json`.
 - **No code comments.** Do not write comments in source files (`.ts`, `.vue`, `.scss`, configs,
   workflows, hooks) or in code examples of blog posts. Name things so the code explains itself.
 - **No personal names** on the site, and **nothing private** in the repo: link public repositories
@@ -34,6 +37,6 @@ when a link is missing or points elsewhere.
 | Skill | Use it to |
 | --- | --- |
 | `pr-description` | name a branch, write commits and the PR title/body |
-| `ci-maintenance` | run, debug or extend the typecheck/build gate |
+| `ci-maintenance` | run, debug or extend the test/typecheck/build gate |
 | `github-actions` | write or change a workflow, pin actions |
 | `site-content` | add a project, change copy, swap a logo, adjust the theme |

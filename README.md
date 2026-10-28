@@ -16,6 +16,7 @@ Stack: Nuxt 4 · Nuxt UI 4 · TypeScript · Vite · SCSS (Tailwind CSS 4 underne
 ```bash
 pnpm install
 pnpm dev          # http://localhost:3000
+pnpm test         # every locale file matches en.json (keys, placeholders, plurals)
 pnpm typecheck
 pnpm generate     # static site in .output/public (what GitHub Pages serves)
 ```
