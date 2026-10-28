@@ -67,6 +67,8 @@ jobs:
 
       - run: pnpm lint:skills
 
+      - run: pnpm test
+
       - run: pnpm typecheck
 
       - run: pnpm build
