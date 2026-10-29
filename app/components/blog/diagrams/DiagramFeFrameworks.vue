@@ -27,8 +27,8 @@ const lanes: Lane[] = [
     boxes: [
       { label: 'Component', note: '\'use client\'' },
       { label: 'useWorkOrders()', note: 'values' },
-      { label: 'RTK slice', note: 'listeners' },
-      { label: 'fetch', note: 'server-only' }
+      { label: 'Query + Zustand', note: 'server · client' },
+      { label: 'fetch', note: 'RSC prefetch' }
     ]
   },
   {

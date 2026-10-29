@@ -258,7 +258,7 @@
     "posts": {
       "frontendArchitecture": {
         "title": "规模化前端架构：Angular、React 和 Vue 中的 Nx、NgRx 与 facade",
-        "description": "我们如何依照 Manfred Steyer 的领域与库类型模型组织大型前端：Nx 边界、带可选 facade 的 NgRx，以及在 Next.js 和 Nuxt 中的同一套规则。",
+        "description": "依照 Manfred Steyer 的领域与库类型模型组织大型前端：Nx 中的边界、Angular 22 中带 facade 的 NgRx、Next.js 中的 Zustand 搭配 TanStack Query，以及 Nuxt 中的 Pinia。",
         "short": "前端架构"
       },
       "slat": {

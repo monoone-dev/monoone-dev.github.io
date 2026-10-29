@@ -258,7 +258,7 @@
     "posts": {
       "frontendArchitecture": {
         "title": "Arquitectura front-end a escala: Nx, NgRx y fachadas en Angular, React y Vue",
-        "description": "Cómo estructuramos front-ends grandes con el modelo de dominios y tipos de librería de Manfred Steyer: fronteras Nx, NgRx con fachada opcional y lo mismo en Next.js y Nuxt.",
+        "description": "Front-ends grandes según los dominios y tipos de librería de Manfred Steyer: fronteras Nx, NgRx con fachada en Angular 22, Zustand y TanStack Query en Next.js y Pinia en Nuxt.",
         "short": "Arquitectura front-end"
       },
       "slat": {
