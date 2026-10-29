@@ -258,7 +258,7 @@
     "posts": {
       "frontendArchitecture": {
         "title": "Architettura front-end su larga scala: Nx, NgRx e facade in Angular, React e Vue",
-        "description": "Come strutturiamo i grandi front-end secondo il modello di Manfred Steyer: confini Nx, NgRx con facade opzionale e le stesse regole in Next.js e Nuxt.",
+        "description": "Grandi front-end con il modello di domini e tipi di libreria di Manfred Steyer: confini Nx, NgRx con facade in Angular 22, Zustand e TanStack Query in Next.js, Pinia in Nuxt.",
         "short": "Architettura front-end"
       },
       "slat": {

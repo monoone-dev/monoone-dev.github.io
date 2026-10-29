@@ -1,5 +1,7 @@
 Questa guida descrive come strutturiamo i front-end di grandi dimensioni: un solo workspace, molte applicazioni, molti team e una regola per ogni file. Lo costruiamo con **Nx** e **Angular**, teniamo lo stato condiviso in **NgRx** e mettiamo una **facade opzionale** davanti allo store. Poi mostriamo la stessa architettura, regola per regola, in **React con Next.js** e in **Vue con Nuxt**.
 
+Gli esempi sono scritti per **Angular 22** con NgRx 22, **React 19** con Next.js 16, **TanStack Query** e **Zustand**, e **Vue 3.5** con Nuxt 4 e **Pinia 3**.
+
 L'architettura non è nostra. Il suo nucleo è stato elaborato e pubblicato da **Manfred Steyer**, formatore e consulente Angular, Google Developer Expert per Angular e la persona dietro [ANGULARarchitects](https://www.angulararchitects.io/). La sua idea è tagliare un front-end **verticalmente per dominio** e **orizzontalmente per tipo di libreria**, far parlare i domini solo attraverso un'API esplicita e far rispettare questi confini da uno strumento, non da una wiki. La sezione 2 elenca con precisione che cosa viene da lui, che cosa viene da Nx e che cosa abbiamo aggiunto noi.
 
 Un esempio piccolo non può mostrare perché tutto questo conta. Un dominio con un solo store sta nella testa di chiunque. Per questo ogni esempio di questa pagina viene da un unico workspace realistico: **Fleetline**, una piattaforma di manutenzione di flotte con tre applicazioni, nove domini, circa settanta librerie e cinque team. Viene presentato nella sezione 5 e usato in tutte le sezioni successive.
@@ -164,6 +166,7 @@ fleetline/
         ├── ui-design-system/
         ├── ui-layout/
         ├── data-access-http/
+        ├── util-http/
         ├── util-date/
         ├── util-money/
         └── util-testing/
@@ -223,6 +226,59 @@ Tre righe di questa tabella portano la maggior parte del valore:
 - **data-access:** una per dominio, all'inizio. Si divide per sottodominio quando contiene più di tre o quattro feature dello store o quando il team si divide (`data-access-planning`, `data-access-work-orders`).
 - **model:** uno per dominio. È piccolo per natura.
 - Se una libreria ha un solo file, probabilmente è troppo piccola; se il suo `index.ts` esporta più di una trentina di simboli, probabilmente è troppo grande.
+
+### 6.3. Stili
+
+Gli stili sono soggetti agli stessi confini del TypeScript, ma la regola di confine non li vede: Nx costruisce il grafo delle dipendenze dagli import TypeScript e JavaScript e ignora gli `@use` di SCSS. Per questo gli stili hanno quattro regole proprie:
+
+1. **Un componente ha stili solo per sé, in un file accanto a sé.** Una libreria non definisce mai una classe globale, così `.card` di maintenance e `.card` di billing non possono scontrarsi.
+2. **Il design system parla tramite variabili CSS.** I token (colori, spaziature, raggi, tipografia) sono custom property di `shared/ui-design-system`. I componenti dei domini leggono `var(--ds-…)` e non fanno `@use` di file SCSS di altre librerie.
+3. **Gli stili globali li ha solo l'applicazione:** reset, font e token, in un unico posto.
+4. **Nessuno stilizza l'interno del componente di un altro.** Un componente che deve poter essere personalizzato espone un input, una prop o una variabile CSS.
+
+| | Angular | React / Next.js | Vue / Nuxt |
+|---|---|---|---|
+| Stili del componente | `styleUrl` con l'incapsulamento emulato predefinito | CSS Modules: `*.module.scss` | `<style scoped lang="scss">` |
+| Stili globali | `apps/<app>/src/styles.scss` | import in `app/layout.tsx` dell'app | `css` in `nuxt.config.ts` |
+| Vietato nelle librerie | `::ng-deep`, `ViewEncapsulation.None` | `:global(...)`, import di un `.css` semplice | `:deep(...)`, `<style>` senza `scoped` |
+
+`libs/shared/ui-design-system/src/styles/tokens.scss`
+
+```scss
+:root {
+  --ds-surface: #ffffff;
+  --ds-text: #1b1f24;
+  --ds-text-muted: #59636e;
+  --ds-danger: #c62828;
+  --ds-radius: 8px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+}
+```
+
+`libs/maintenance/ui-work-order-card/src/lib/work-order-card.component.scss`
+
+```scss
+.card {
+  display: grid;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+}
+
+.card--overdue {
+  border-left: 4px solid var(--ds-danger);
+}
+
+.vehicle,
+.due {
+  color: var(--ds-text-muted);
+}
+```
+
+Le stesse regole CSS finiscono in React in `work-order-card.module.scss` e in Vue nel blocco `<style scoped>` del componente. Stylelint in CI rifiuta i selettori dell'ultima riga della tabella (`selector-disallowed-list`). La regola 2 la verifica un solo comando `grep` in CI: un `@use` in una libreria di dominio può puntare solo a file della stessa libreria, mai all'alias `@fleetline/`.
 
 ## 7. Domini e confini
 
@@ -605,11 +661,11 @@ L'assegnazione è **ottimistica**: il reducer applica subito `assigneeChosen`, e
 
 ```ts
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { API_BASE_URL } from '@fleetline/shared/data-access-http';
 import type { WorkOrder } from '@fleetline/maintenance/model';
 
-@Injectable({ providedIn: 'root' })
+@Service()
 export class WorkOrdersHttp {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = inject(API_BASE_URL);
@@ -624,13 +680,15 @@ export class WorkOrdersHttp {
 }
 ```
 
+`@Service()` di Angular 22 è la forma breve di `@Injectable({ providedIn: 'root' })`; ottiene le dipendenze solo tramite `inject()`. `HttpClient` usa la Fetch API per impostazione predefinita, quindi la configurazione non ha bisogno di `withFetch()`. `toErrorMessage` vive in `shared/util-http`, una libreria senza framework usata anche dalle versioni React e Vue.
+
 `libs/maintenance/data-access/src/lib/work-orders.effects.ts`
 
 ```ts
 import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { catchError, map, mergeMap, of, switchMap } from 'rxjs';
-import { toErrorMessage } from '@fleetline/shared/data-access-http';
+import { toErrorMessage } from '@fleetline/shared/util-http';
 import { WorkOrdersHttp } from './work-orders.api';
 import { workOrdersApi, workOrdersPage } from './work-orders.events';
 
@@ -710,13 +768,13 @@ Una facade è un oggetto sottile tra le feature e la gestione dello stato. Espon
 `libs/maintenance/data-access/src/lib/work-orders.facade.ts`
 
 ```ts
-import { inject, Injectable } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Store } from '@ngrx/store';
 import type { WorkOrder, WorkOrderFilter } from '@fleetline/maintenance/model';
 import { workOrdersPage } from './work-orders.events';
 import { workOrdersFeature } from './work-orders.feature';
 
-@Injectable()
+@Service({ autoProvided: false })
 export class WorkOrdersFacade {
   private readonly store = inject(Store);
 
@@ -742,7 +800,7 @@ export class WorkOrdersFacade {
 }
 ```
 
-La facade è fornita da `provideWorkOrders()`, non in `root`, quindi esiste esattamente dove esiste la sua feature dello store.
+`autoProvided: false` disattiva la fornitura in `root`. La facade è fornita da `provideWorkOrders()`, quindi esiste esattamente dove esiste la sua feature dello store.
 
 ### 10.1. Perché una facade
 
@@ -854,6 +912,7 @@ fleetline/
         ├── ui-design-system/
         ├── ui-layout/
         ├── data-access-http/
+        ├── util-http/
         └── util-date/
 ```
 
@@ -862,7 +921,7 @@ fleetline/
 `libs/maintenance/ui-work-order-card/src/lib/work-order-card.component.ts`
 
 ```ts
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { Component, computed, input, output } from '@angular/core';
 import { isOverdue, type WorkOrder } from '@fleetline/maintenance/model';
 import { BadgeComponent, MechanicPickerComponent } from '@fleetline/shared/ui-design-system';
 import { RelativeDatePipe } from '@fleetline/shared/util-date';
@@ -870,7 +929,7 @@ import { RelativeDatePipe } from '@fleetline/shared/util-date';
 @Component({
   selector: 'mnt-work-order-card',
   imports: [BadgeComponent, MechanicPickerComponent, RelativeDatePipe],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  styleUrl: './work-order-card.component.scss',
   template: `
     <article class="card" [class.card--overdue]="overdue()">
       <header>
@@ -898,14 +957,14 @@ export class WorkOrderCardComponent {
 }
 ```
 
-La card conosce un `WorkOrder` perché `model` è consentito. Riceve `vehicleLabel` come stringa, perché una libreria `ui` di maintenance non può importare `fleet/api`.
+La card conosce un `WorkOrder` perché `model` è consentito. Riceve `vehicleLabel` come stringa, perché una libreria `ui` di maintenance non può importare `fleet/api`. In Angular 22 `OnPush` è la strategia di change detection predefinita, quindi i componenti non la dichiarano; gli stili della sezione 6.3 arrivano tramite `styleUrl`.
 
 ### 11.2. La libreria feature
 
 `libs/maintenance/feature-work-orders/src/lib/work-orders-page.component.ts`
 
 ```ts
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import { Component, computed, effect, inject, input } from '@angular/core';
 import { WorkOrdersFacade } from '@fleetline/maintenance/data-access';
 import { StatusFilterComponent, WorkOrderCardComponent } from '@fleetline/maintenance/ui-work-order-card';
 import { VehicleSummaryStore } from '@fleetline/fleet/api';
@@ -914,7 +973,6 @@ import { EmptyStateComponent, SpinnerComponent } from '@fleetline/shared/ui-desi
 @Component({
   selector: 'mnt-work-orders-page',
   imports: [StatusFilterComponent, WorkOrderCardComponent, EmptyStateComponent, SpinnerComponent],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>Work orders <small>{{ facade.overdueCount() }} overdue</small></h1>
 
@@ -1037,17 +1095,19 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([authInterceptor])),
     provideStore(),
     provideEffects(),
-    provideStoreDevtools({ maxAge: 50, connectInZone: true }),
+    provideStoreDevtools({ maxAge: 50 }),
     { provide: API_BASE_URL, useValue: environment.apiUrl },
   ],
 };
 ```
 
-Questa è l'intera applicazione: due file e un `environment`. `backoffice` monta la stessa `maintenance/feature-shell` con un layout diverso. Una terza applicazione richiederebbe un pomeriggio.
+Una nuova applicazione Angular 22 gira senza zone.js e `HttpClient` usa la Fetch API, quindi la configurazione non ha bisogno né di `provideZonelessChangeDetection()` né di `withFetch()`. Questa è l'intera applicazione: due file e un `environment`. `backoffice` monta la stessa `maintenance/feature-shell` con un layout diverso. Una terza applicazione richiederebbe un pomeriggio.
 
 ## 12. React e Next.js
 
 L'architettura non dipende da Angular. Librerie, tipi, domini, tag e regola di lint restano gli stessi; Nx genera progetti React e Next.js con `@nx/react` e `@nx/next`. Cambia il modo in cui si implementa ogni tipo di libreria, e Next.js aggiunge una nuova dimensione: il codice che gira solo sul server.
+
+Dividiamo lo stato in due tipi. Lo **stato del server**, cioè i dati che appartengono al backend (l'elenco degli ordini di lavoro), lo gestisce **TanStack Query**. Lo **stato del client**, cioè ciò che esiste solo nel browser (criteri del filtro, selezioni, bozze), lo gestisce **Zustand**. Entrambi sono privati di `data-access`, e la feature vede solo la facade.
 
 Lo stesso workspace con un'applicazione Next.js e tutti i file di questo caso d'uso:
 
@@ -1084,6 +1144,7 @@ fleetline/
     │   │   └── src/
     │   │       ├── index.ts
     │   │       └── lib/
+    │   │           ├── work-orders-route.tsx
     │   │           ├── work-orders-page.tsx
     │   │           └── work-orders-page.spec.tsx
     │   ├── ui-work-order-card/
@@ -1091,7 +1152,7 @@ fleetline/
     │   │       ├── index.ts
     │   │       └── lib/
     │   │           ├── work-order-card.tsx
-    │   │           ├── work-order-card.module.css
+    │   │           ├── work-order-card.module.scss
     │   │           └── status-filter.tsx
     │   ├── data-access/
     │   │   ├── project.json
@@ -1100,9 +1161,11 @@ fleetline/
     │   │       ├── index.ts
     │   │       └── lib/
     │   │           ├── work-orders.http.ts
-    │   │           ├── work-orders.slice.ts
-    │   │           ├── work-orders.slice.spec.ts
-    │   │           ├── work-orders.listeners.ts
+    │   │           ├── work-orders.queries.ts
+    │   │           ├── work-orders.mutations.ts
+    │   │           ├── work-orders.store.ts
+    │   │           ├── work-orders.store.spec.ts
+    │   │           ├── work-orders.provider.tsx
     │   │           └── use-work-orders.ts
     │   ├── data-access-server/
     │   │   └── src/
@@ -1121,17 +1184,21 @@ fleetline/
     │   └── data-access/
     │       └── src/
     │           └── lib/
-    │               └── use-vehicle-summaries.ts
+    │               ├── fleet.http.ts
+    │               ├── vehicle-summary.store.ts
+    │               └── vehicle-summaries.tsx
+    ├── identity/
+    │   └── api/
     └── shared/
-        ├── data-access-store/
+        ├── data-access-query/
         │   └── src/
         │       ├── index.ts
         │       └── lib/
-        │           ├── store.ts
-        │           └── store-provider.tsx
+        │           ├── query-client.ts
+        │           └── query-provider.tsx
         ├── data-access-server/
-        ├── data-access-http/
         ├── ui-design-system/
+        ├── util-http/
         └── util-date/
 ```
 
@@ -1139,17 +1206,21 @@ fleetline/
 
 | Angular | React / Next.js |
 |---|---|
-| Componente `feature` | Un client component esportato da `feature-*`; il `page.tsx` nell'app si limita a renderizzarlo |
+| Componente `feature` | Un container server che carica i dati e un client component che li mostra; entrambi in `feature-*`, e il `page.tsx` si limita a renderizzare il container |
 | Componente `ui` con `input()`/`output()` | Un componente con props e callback |
-| Route della `shell` | Le route su file restano in `apps/<app>/app/`; la libreria shell esporta il layout e i provider del dominio |
-| NgRx Store, `createFeature` | Redux Toolkit `createSlice` |
-| NgRx Entity | `createEntityAdapter` di Redux Toolkit |
-| `createSelector` | `createSelector` (Reselect, parte di Redux Toolkit) |
-| Effect | Listener middleware, o thunk nei casi semplici |
-| `provideState` su una route | `slice.injectInto(rootReducer)` (slice in lazy loading) |
-| Signal Store | Zustand |
+| Route della `shell` | Le route su file restano in `apps/<app>/app/`; la libreria shell esporta il layout del dominio con i provider e il controllo dei permessi |
+| `provideWorkOrders()` su una route | `<WorkOrdersProvider>` nel layout della shell |
+| NgRx Store ed effect per i dati del server | TanStack Query: `queryOptions`, `useQuery`, `useMutation` |
+| Signal Store per lo stato del client | Zustand: `createStore` da una factory, esposto tramite Context |
+| `createSelector` | Un selector in `useStore(store, selector)`; i valori derivati li calcola la facade e React Compiler li memoizza |
+| `switchMap` in un effect | Chiave della query e `signal` nella `queryFn` |
+| Reducer ottimistico e `assignFailed` | `onMutate` e `onError` in `useMutation` |
 | Servizio facade | Un hook: `useWorkOrders()` |
-| `HttpClient` | `fetch` in una funzione server o in un modulo API client |
+| `@Service()` con `HttpClient` | Un modulo di funzioni sopra `createApiClient` di `shared/util-http` |
+| `inject()` | Context letto con `use()`, solo per ciò che ha uno scope |
+| `provideStoreDevtools` | Il middleware `devtools` di Zustand e i React Query Devtools |
+
+Anche Redux Toolkit si adatta a questa architettura: una slice al posto di una feature NgRx, `createEntityAdapter`, il listener middleware al posto degli effect. Fleetline ha scelto TanStack Query e Zustand perché in Next.js la maggior parte dello stato è stato del server, e ciò che resta sul lato client è poco (sezione 17).
 
 ### 12.2. Tag per server e client
 
@@ -1157,240 +1228,256 @@ Nell'App Router un file è o un server component o un client component. Il codic
 
 | Libreria | Tag | Contiene |
 |---|---|---|
-| `maintenance/data-access` | `type:data-access`, `platform:client` | Slice Redux, listener, API client, hook facade |
+| `maintenance/data-access` | `type:data-access`, `platform:client` | Client HTTP, query e mutation di TanStack Query, store Zustand, provider, hook facade |
 | `maintenance/data-access-server` | `type:data-access`, `platform:server` | Funzioni fetch `server-only` e server action |
 
-La regola di lint della sezione 8.2 contiene già il vincolo `platform:client` → non `platform:server`. Inoltre ogni file solo server inizia con `import 'server-only'`, così un errore fa fallire la build anche dove il lint non gira.
+La regola di lint della sezione 8.2 contiene già il vincolo `platform:client` → non `platform:server`. Inoltre ogni file solo server inizia con `import 'server-only'`, così un errore fa fallire la build anche dove il lint non gira. La libreria `feature` non ha un tag `platform`: il suo container server importa `data-access-server`, e il client component solo `data-access`.
 
-### 12.3. Lo store
+### 12.3. HTTP e query client
 
-Redux Toolkit può iniettare le slice in lazy loading, e questo fa la parte di `provideState` su una route. Il root reducer vive in `shared` e non conosce nessun dominio.
+React non ha DI, quindi il servizio HTTP è un semplice modulo. `createApiClient` di `shared/util-http` è un sottile wrapper di `fetch` senza framework: URL di base, JSON ed errori HTTP come eccezioni. Il modulo contiene solo configurazione, mai dati dell'utente, quindi può vivere a livello di modulo.
 
-`libs/shared/data-access-store/src/lib/store.ts`
+`libs/maintenance/data-access/src/lib/work-orders.http.ts`
 
 ```ts
-import { combineSlices, configureStore, createListenerMiddleware, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import { useDispatch, useSelector } from 'react-redux';
+import { createApiClient } from '@fleetline/shared/util-http';
+import type { WorkOrder } from '@fleetline/maintenance/model';
 
-const layoutSlice = createSlice({
-  name: 'layout',
-  initialState: { sidebarOpen: true },
-  reducers: {
-    sidebarToggled(state) {
-      state.sidebarOpen = !state.sidebarOpen;
-    },
-    sidebarSet(state, action: PayloadAction<boolean>) {
-      state.sidebarOpen = action.payload;
-    },
-  },
-});
+const api = createApiClient(process.env.NEXT_PUBLIC_API_URL ?? '');
 
-export interface LazyLoadedSlices {}
-
-export const rootReducer = combineSlices(layoutSlice).withLazyLoadedSlices<LazyLoadedSlices>();
-
-export function makeStore() {
-  const listener = createListenerMiddleware();
-  return configureStore({
-    reducer: rootReducer,
-    middleware: (getDefault) => getDefault().prepend(listener.middleware),
-  });
-}
-
-export type AppStore = ReturnType<typeof makeStore>;
-export type RootState = ReturnType<typeof rootReducer>;
-export type AppDispatch = AppStore['dispatch'];
-
-export const useAppDispatch = useDispatch.withTypes<AppDispatch>();
-export const useAppSelector = useSelector.withTypes<RootState>();
-export const { sidebarToggled, sidebarSet } = layoutSlice.actions;
+export const workOrdersHttp = {
+  list: (depotId: string, signal?: AbortSignal) =>
+    api.get<WorkOrder[]>(`/depots/${depotId}/work-orders`, { signal }),
+  assign: (id: string, assigneeId: string) =>
+    api.put<WorkOrder>(`/work-orders/${id}/assignee`, { assigneeId }),
+};
 ```
 
-Uno store nuovo per ogni richiesta viene creato in un provider client, come raccomanda la guida di Redux Toolkit per l'App Router.
+La query cache, a differenza della configurazione, contiene dati dell'utente. Per questo il `QueryClient` nasce nel provider: uno per scheda del browser e uno separato per ogni richiesta sul server. Il root layout dell'app monta `QueryProvider` una sola volta, come `provideHttpClient()` in `app.config.ts` di Angular.
 
-`libs/shared/data-access-store/src/lib/store-provider.tsx`
+`libs/shared/data-access-query/src/lib/query-client.ts`
+
+```ts
+import { QueryClient } from '@tanstack/react-query';
+
+export function makeQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+}
+```
+
+`libs/shared/data-access-query/src/lib/query-provider.tsx`
 
 ```tsx
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { Provider } from 'react-redux';
-import { makeStore } from './store';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { makeQueryClient } from './query-client';
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [store] = useState(makeStore);
-  return <Provider store={store}>{children}</Provider>;
+export function QueryProvider({ children }: { children: ReactNode }) {
+  const [client] = useState(makeQueryClient);
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 ```
 
-### 12.4. La slice
+### 12.4. Query e mutation
 
-Gli stessi eventi, lo stesso aggiornamento ottimistico, le stesse funzioni di `model` della sezione 9.
-
-`libs/maintenance/data-access/src/lib/work-orders.slice.ts`
+`libs/maintenance/data-access/src/lib/work-orders.queries.ts`
 
 ```ts
-import { createEntityAdapter, createSelector, createSlice, type PayloadAction, type WithSlice } from '@reduxjs/toolkit';
-import { rootReducer, type RootState } from '@fleetline/shared/data-access-store';
-import {
-  byDueDate, emptyFilter, isOverdue, matchesFilter,
-  type WorkOrder, type WorkOrderFilter,
-} from '@fleetline/maintenance/model';
-
-const adapter = createEntityAdapter<WorkOrder>({ sortComparer: byDueDate });
-
-export const workOrdersSlice = createSlice({
-  name: 'workOrders',
-  initialState: adapter.getInitialState({
-    filter: emptyFilter as WorkOrderFilter,
-    loading: false,
-    error: null as string | null,
-  }),
-  reducers: {
-    opened(state, action: PayloadAction<{ depotId: string }>) {
-      adapter.removeAll(state);
-      state.filter = { ...emptyFilter, depotId: action.payload.depotId };
-      state.loading = true;
-      state.error = null;
-    },
-    filterChanged(state, action: PayloadAction<Partial<Omit<WorkOrderFilter, 'depotId'>>>) {
-      Object.assign(state.filter, action.payload);
-    },
-    assigneeChosen(state, action: PayloadAction<{ id: string; assigneeId: string; previousAssigneeId: string | null }>) {
-      adapter.updateOne(state, { id: action.payload.id, changes: { assigneeId: action.payload.assigneeId } });
-    },
-    loadSucceeded(state, action: PayloadAction<WorkOrder[]>) {
-      adapter.setAll(state, action.payload);
-      state.loading = false;
-    },
-    loadFailed(state, action: PayloadAction<string>) {
-      state.loading = false;
-      state.error = action.payload;
-    },
-    assignSucceeded(state, action: PayloadAction<WorkOrder>) {
-      adapter.upsertOne(state, action.payload);
-    },
-    assignFailed(state, action: PayloadAction<{ id: string; previousAssigneeId: string | null; error: string }>) {
-      adapter.updateOne(state, { id: action.payload.id, changes: { assigneeId: action.payload.previousAssigneeId } });
-      state.error = action.payload.error;
-    },
-  },
-});
-
-declare module '@fleetline/shared/data-access-store' {
-  export interface LazyLoadedSlices extends WithSlice<typeof workOrdersSlice> {}
-}
-
-const injected = workOrdersSlice.injectInto(rootReducer);
-const selectState = (state: RootState) => injected.selectSlice(state);
-const entities = adapter.getSelectors(selectState);
-
-export const selectFilter = (state: RootState) => selectState(state).filter;
-export const selectLoading = (state: RootState) => selectState(state).loading;
-export const selectError = (state: RootState) => selectState(state).error;
-export const selectVisible = createSelector([entities.selectAll, selectFilter], (orders, filter) =>
-  orders.filter((order) => matchesFilter(order, filter)),
-);
-export const selectOverdueCount = createSelector([entities.selectAll], (orders) =>
-  orders.filter((order) => isOverdue(order, new Date())).length,
-);
-export const workOrdersActions = workOrdersSlice.actions;
-```
-
-### 12.5. Gli effect come listener
-
-I listener vengono aggiunti quando il dominio viene montato e rimossi quando viene smontato: è il corrispettivo di `provideEffects` su una route. `cancelActiveListeners()` dà la semantica di `switchMap`.
-
-`libs/maintenance/data-access/src/lib/work-orders.listeners.ts`
-
-```ts
-import { addListener, type UnsubscribeListener } from '@reduxjs/toolkit';
-import type { AppDispatch, RootState } from '@fleetline/shared/data-access-store';
-import { toErrorMessage } from '@fleetline/shared/data-access-http';
+import { queryOptions } from '@tanstack/react-query';
 import { workOrdersHttp } from './work-orders.http';
-import { workOrdersActions as actions } from './work-orders.slice';
 
-const addAppListener = addListener.withTypes<RootState, AppDispatch>();
+export const workOrdersQuery = (depotId: string) =>
+  queryOptions({
+    queryKey: ['maintenance', 'work-orders', depotId],
+    queryFn: ({ signal }) => workOrdersHttp.list(depotId, signal),
+  });
+```
 
-export function startWorkOrderListeners(dispatch: AppDispatch): UnsubscribeListener {
-  const stops = [
-    dispatch(
-      addAppListener({
-        actionCreator: actions.opened,
-        effect: async ({ payload }, api) => {
-          api.cancelActiveListeners();
-          try {
-            const orders = await workOrdersHttp.list(payload.depotId, api.signal);
-            api.dispatch(actions.loadSucceeded(orders));
-          } catch (error) {
-            if (!api.signal.aborted) api.dispatch(actions.loadFailed(toErrorMessage(error)));
-          }
-        },
-      }),
-    ),
-    dispatch(
-      addAppListener({
-        actionCreator: actions.assigneeChosen,
-        effect: async ({ payload }, api) => {
-          try {
-            api.dispatch(actions.assignSucceeded(await workOrdersHttp.assign(payload.id, payload.assigneeId)));
-          } catch (error) {
-            api.dispatch(actions.assignFailed({ ...payload, error: toErrorMessage(error) }));
-          }
-        },
-      }),
-    ),
-  ];
-  return () => stops.forEach((stop) => stop());
+La chiave contiene `depotId`, e la `queryFn` passa `signal` a `fetch`. Cambiare deposito abbandona la vecchia query e ne interrompe la richiesta: è la semantica di `switchMap` della sezione 9.4. Due componenti che leggono la stessa chiave condividono una sola richiesta e una sola voce in cache. Il file non ha `'use client'`, perché `workOrdersQuery` è importato anche dal container server (sezione 12.7).
+
+`libs/maintenance/data-access/src/lib/work-orders.mutations.ts`
+
+```ts
+'use client';
+
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { workOrdersHttp } from './work-orders.http';
+import { workOrdersQuery } from './work-orders.queries';
+
+export function useAssignWorkOrder(depotId: string) {
+  const client = useQueryClient();
+  const { queryKey } = workOrdersQuery(depotId);
+
+  return useMutation({
+    mutationFn: ({ id, assigneeId }: { id: string; assigneeId: string }) => workOrdersHttp.assign(id, assigneeId),
+    onMutate: async ({ id, assigneeId }) => {
+      await client.cancelQueries({ queryKey });
+      const previous = client.getQueryData(queryKey);
+      client.setQueryData(queryKey, (orders) =>
+        orders?.map((order) => (order.id === id ? { ...order, assigneeId } : order)),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => client.setQueryData(queryKey, context?.previous),
+    onSettled: () => client.invalidateQueries({ queryKey }),
+  });
 }
 ```
+
+Lo stesso aggiornamento ottimistico della sezione 9.3: `onMutate` inserisce subito il nuovo meccanico, `onError` ripristina l'elenco precedente e `onSettled` riallinea lo stato con il server. Le mutation non si interrompono a vicenda, quindi due assegnazioni su due card si concludono entrambe, come con `mergeMap`.
+
+### 12.5. Lo stato del client in Zustand
+
+`libs/maintenance/data-access/src/lib/work-orders.store.ts`
+
+```ts
+import { createStore } from 'zustand/vanilla';
+import { devtools } from 'zustand/middleware';
+import type { WorkOrderFilter } from '@fleetline/maintenance/model';
+
+type Criteria = Omit<WorkOrderFilter, 'depotId'>;
+
+export interface WorkOrdersClientState {
+  criteria: Criteria;
+  filterChanged: (change: Partial<Criteria>) => void;
+}
+
+export function createWorkOrdersStore() {
+  return createStore<WorkOrdersClientState>()(
+    devtools(
+      (set) => ({
+        criteria: { status: 'all', query: '' },
+        filterChanged: (change) =>
+          set((state) => ({ criteria: { ...state.criteria, ...change } }), undefined, 'Work Orders Page/filterChanged'),
+      }),
+      { name: 'maintenance/work-orders' },
+    ),
+  );
+}
+
+export type WorkOrdersStore = ReturnType<typeof createWorkOrdersStore>;
+```
+
+Zustand contiene solo ciò che appartiene al client: i criteri del filtro. L'elenco degli ordini vive nella query cache e non viene copiato qui, perché due fonti di verità prima o poi divergono. Le action prendono il nome degli eventi della sezione 9.2 (`filterChanged`, non `setFilter`), e il terzo argomento di `set` registra quell'evento nei Redux DevTools, così il log degli eventi resta, anche senza reducer.
+
+Lo store nasce dalla factory `createStore`, non da `create()` a livello di modulo. Uno store globale in Next.js sarebbe condiviso sul server tra tutte le richieste, cioè tra tutti gli utenti. La factory la chiama il provider:
+
+`libs/maintenance/data-access/src/lib/work-orders.provider.tsx`
+
+```tsx
+'use client';
+
+import { createContext, use, useState, type ReactNode } from 'react';
+import { createWorkOrdersStore, type WorkOrdersStore } from './work-orders.store';
+
+const WorkOrdersStoreContext = createContext<WorkOrdersStore | null>(null);
+
+export function WorkOrdersProvider({ children }: { children: ReactNode }) {
+  const [store] = useState(createWorkOrdersStore);
+  return <WorkOrdersStoreContext value={store}>{children}</WorkOrdersStoreContext>;
+}
+
+export function useWorkOrdersStore(): WorkOrdersStore {
+  const store = use(WorkOrdersStoreContext);
+  if (!store) throw new Error('useWorkOrdersStore must be used inside <WorkOrdersProvider>');
+  return store;
+}
+```
+
+`WorkOrdersProvider` è il corrispettivo di `provideWorkOrders()`. Lo monta il layout della shell (sezione 12.8), quindi lo store esiste esattamente dove esistono le route di maintenance. React 19 renderizza il context direttamente come provider e lo legge con `use()`.
 
 ### 12.6. L'hook facade
-
-L'hook ha gli stessi membri della facade Angular. Inoltre avvia i listener e segnala l'apertura della pagina, così per collegare una feature basta una riga.
 
 `libs/maintenance/data-access/src/lib/use-work-orders.ts`
 
 ```ts
 'use client';
 
-import { useEffect } from 'react';
-import { useAppDispatch, useAppSelector } from '@fleetline/shared/data-access-store';
-import type { WorkOrder, WorkOrderFilter } from '@fleetline/maintenance/model';
-import { startWorkOrderListeners } from './work-orders.listeners';
-import {
-  selectError, selectFilter, selectLoading, selectOverdueCount, selectVisible,
-  workOrdersActions as actions,
-} from './work-orders.slice';
+import { useQuery } from '@tanstack/react-query';
+import { useStore } from 'zustand';
+import { isOverdue, matchesFilter, type WorkOrder } from '@fleetline/maintenance/model';
+import { toErrorMessage } from '@fleetline/shared/util-http';
+import { useAssignWorkOrder } from './work-orders.mutations';
+import { useWorkOrdersStore } from './work-orders.provider';
+import { workOrdersQuery } from './work-orders.queries';
 
 export function useWorkOrders(depotId: string) {
-  const dispatch = useAppDispatch();
+  const store = useWorkOrdersStore();
+  const criteria = useStore(store, (state) => state.criteria);
+  const filterChanged = useStore(store, (state) => state.filterChanged);
+  const query = useQuery(workOrdersQuery(depotId));
+  const assignment = useAssignWorkOrder(depotId);
 
-  useEffect(() => startWorkOrderListeners(dispatch), [dispatch]);
-  useEffect(() => {
-    dispatch(actions.opened({ depotId }));
-  }, [dispatch, depotId]);
+  const all = query.data ?? [];
+  const filter = { ...criteria, depotId };
+  const failure = query.error ?? assignment.error;
 
   return {
-    visible: useAppSelector(selectVisible),
-    overdueCount: useAppSelector(selectOverdueCount),
-    filter: useAppSelector(selectFilter),
-    loading: useAppSelector(selectLoading),
-    error: useAppSelector(selectError),
-    filterBy: (filter: Partial<Omit<WorkOrderFilter, 'depotId'>>) => dispatch(actions.filterChanged(filter)),
-    assign: (order: WorkOrder, assigneeId: string) =>
-      dispatch(actions.assigneeChosen({ id: order.id, assigneeId, previousAssigneeId: order.assigneeId })),
+    visible: all.filter((order) => matchesFilter(order, filter)),
+    overdueCount: all.filter((order) => isOverdue(order, new Date())).length,
+    filter,
+    loading: query.isPending,
+    error: failure ? toErrorMessage(failure) : null,
+    filterBy: filterChanged,
+    assign: (order: WorkOrder, assigneeId: string) => assignment.mutate({ id: order.id, assigneeId }),
   };
 }
 ```
 
+L'hook ha gli stessi membri della facade Angular, tranne `open()`: la query è indicizzata per `depotId`, quindi non serve aprirla. La facade non ha effetti collaterali. Non registra nulla e non invia nulla al montaggio, quindi può usarla un numero qualsiasi di componenti, per esempio un contatore degli ordini in ritardo nell'header, senza una seconda richiesta.
+
+Ogni campo dello store ha un selector separato. In Zustand 5 un selector che restituisce un nuovo oggetto richiede `useShallow`, altrimenti il render va in loop. `visible` e `overdueCount` vengono calcolati a ogni render; React Compiler li memoizza automaticamente, quindi la facade non ha bisogno di `useMemo` né di `useCallback`.
+
 `libs/maintenance/data-access/src/index.ts`
 
 ```ts
+export { workOrdersQuery } from './lib/work-orders.queries';
+export { WorkOrdersProvider } from './lib/work-orders.provider';
 export { useWorkOrders } from './lib/use-work-orders';
 ```
 
+Tre export. Lo store Zustand, le mutation e il client HTTP sono privati.
+
 ### 12.7. Feature, ui e route
+
+La feature ha due container. `WorkOrdersRoute` è un server component: carica gli ordini tramite `data-access-server`, con i cookie dell'utente, e li passa alla query cache tramite `HydrationBoundary`. `WorkOrdersPage` è un client component: legge la facade e compone le librerie `ui`.
+
+`libs/maintenance/feature-work-orders/src/lib/work-orders-route.tsx`
+
+```tsx
+import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
+import { workOrdersQuery } from '@fleetline/maintenance/data-access';
+import { listWorkOrders } from '@fleetline/maintenance/data-access-server';
+import { makeQueryClient } from '@fleetline/shared/data-access-query';
+import { WorkOrdersPage } from './work-orders-page';
+
+export async function WorkOrdersRoute({ depotId }: { depotId: string }) {
+  const client = makeQueryClient();
+  await client.prefetchQuery({ ...workOrdersQuery(depotId), queryFn: () => listWorkOrders(depotId) });
+
+  return (
+    <HydrationBoundary state={dehydrate(client)}>
+      <WorkOrdersPage depotId={depotId} />
+    </HydrationBoundary>
+  );
+}
+```
+
+`libs/maintenance/data-access-server/src/lib/work-orders.ts`
+
+```ts
+import 'server-only';
+import { apiFetch } from '@fleetline/shared/data-access-server';
+import type { WorkOrder } from '@fleetline/maintenance/model';
+
+export function listWorkOrders(depotId: string): Promise<WorkOrder[]> {
+  return apiFetch<WorkOrder[]>(`/depots/${depotId}/work-orders`);
+}
+```
+
+Il primo render nel browser ha già i dati, senza una seconda richiesta e senza spinner; il `loading.tsx` dell'app si vede solo durante il caricamento sul server.
 
 `libs/maintenance/feature-work-orders/src/lib/work-orders-page.tsx`
 
@@ -1442,6 +1529,7 @@ export function WorkOrdersPage({ depotId }: { depotId: string }) {
 import { isOverdue, type WorkOrder } from '@fleetline/maintenance/model';
 import { Badge, MechanicPicker } from '@fleetline/shared/ui-design-system';
 import { formatRelative } from '@fleetline/shared/util-date';
+import styles from './work-order-card.module.scss';
 
 interface WorkOrderCardProps {
   workOrder: WorkOrder;
@@ -1450,21 +1538,25 @@ interface WorkOrderCardProps {
 }
 
 export function WorkOrderCard({ workOrder, vehicleLabel, onAssign }: WorkOrderCardProps) {
+  const overdue = isOverdue(workOrder, new Date());
+
   return (
-    <article className={isOverdue(workOrder, new Date()) ? 'card card--overdue' : 'card'}>
+    <article className={overdue ? `${styles.card} ${styles['card--overdue']}` : styles.card}>
       <header>
         <h3>{workOrder.title}</h3>
         <Badge tone={workOrder.priority === 'urgent' ? 'danger' : 'neutral'}>{workOrder.priority}</Badge>
       </header>
-      <p className="vehicle">{vehicleLabel}</p>
-      <p className="due">{formatRelative(workOrder.dueAt)}</p>
+      <p className={styles.vehicle}>{vehicleLabel}</p>
+      <p className={styles.due}>{formatRelative(workOrder.dueAt)}</p>
       <MechanicPicker depotId={workOrder.depotId} value={workOrder.assigneeId} onChange={onAssign} />
     </article>
   );
 }
 ```
 
-Il file di route nell'applicazione resta lungo poche righe. La libreria shell esporta il layout del dominio con il controllo dei permessi.
+`work-order-card.module.scss` è il file della sezione 6.3. CSS Modules trasforma `.card` in un nome unico in tutta l'applicazione, quindi una classe di una libreria non può finire in un'altra.
+
+I file di route nell'app sono di poche righe ciascuno.
 
 `apps/customer/app/maintenance/layout.tsx`
 
@@ -1480,88 +1572,120 @@ export default function Layout({ children }: { children: ReactNode }) {
 `apps/customer/app/maintenance/depots/[depotId]/work-orders/page.tsx`
 
 ```tsx
-import { WorkOrdersPage } from '@fleetline/maintenance/feature-work-orders';
+import { WorkOrdersRoute } from '@fleetline/maintenance/feature-work-orders';
 
 export default async function Page({ params }: { params: Promise<{ depotId: string }> }) {
   const { depotId } = await params;
-  return <WorkOrdersPage depotId={depotId} />;
+  return <WorkOrdersRoute depotId={depotId} />;
 }
 ```
 
-### 12.8. Stato del server: la stessa facade, un altro motore
+### 12.8. La shell e l'API di un altro dominio
 
-In Next.js gran parte di ciò che una SPA Angular tiene in NgRx è **stato del server**: dati che il server possiede e il client mette in cache. Per elenchi come gli ordini di lavoro, molti team preferiscono server component più una query cache a Redux. La facade rende questa scelta una decisione privata di `data-access`.
+Il layout della shell è un server component. Prima verifica il permesso lato server, poi monta i provider del dominio. In Angular lo fanno `canActivate` e `providers` sulla route (sezione 11.3).
 
-`libs/maintenance/data-access-server/src/lib/work-orders.ts`
+`libs/maintenance/feature-shell/src/lib/maintenance-layout.tsx`
 
-```ts
-import 'server-only';
-import { apiFetch } from '@fleetline/shared/data-access-server';
-import type { WorkOrder } from '@fleetline/maintenance/model';
+```tsx
+import type { ReactNode } from 'react';
+import { WorkOrdersProvider } from '@fleetline/maintenance/data-access';
+import { VehicleSummaryProvider } from '@fleetline/fleet/api';
+import { requirePermission } from '@fleetline/identity/api';
 
-export function listWorkOrders(depotId: string): Promise<WorkOrder[]> {
-  return apiFetch<WorkOrder[]>(`/depots/${depotId}/work-orders`, { next: { tags: [`work-orders:${depotId}`] } });
+export async function MaintenanceLayout({ children }: { children: ReactNode }) {
+  await requirePermission('maintenance:read');
+
+  return (
+    <VehicleSummaryProvider>
+      <WorkOrdersProvider>{children}</WorkOrdersProvider>
+    </VehicleSummaryProvider>
+  );
 }
 ```
 
-`libs/maintenance/data-access/src/lib/use-work-orders.query.ts`
+In Next.js un layout non viene smontato durante la navigazione tra le pagine di maintenance, quindi gli store sopravvivono alla navigazione all'interno del dominio e spariscono quando il pianificatore ne esce.
+
+`useVehicleSummaries` di `fleet/api` è il corrispettivo del `VehicleSummaryStore` della sezione 7.1, scritto in Zustand: maintenance passa un elenco di id e fleet carica le targhe mancanti in una sola richiesta.
+
+`libs/fleet/data-access/src/lib/vehicle-summary.store.ts`
 
 ```ts
+import { createStore } from 'zustand/vanilla';
+import type { VehicleSummary } from '@fleetline/fleet/model';
+import { toErrorMessage } from '@fleetline/shared/util-http';
+import { fleetHttp } from './fleet.http';
+
+export interface VehicleSummaryState {
+  entities: Record<string, VehicleSummary>;
+  ensureLoaded: (ids: readonly string[]) => Promise<void>;
+}
+
+export function createVehicleSummaryStore() {
+  return createStore<VehicleSummaryState>()((set, get) => ({
+    entities: {},
+    ensureLoaded: async (ids) => {
+      const missing = [...new Set(ids)].filter((id) => !get().entities[id]);
+      if (missing.length === 0) return;
+      try {
+        const vehicles = await fleetHttp.summaries(missing);
+        set((state) => ({
+          entities: { ...state.entities, ...Object.fromEntries(vehicles.map((vehicle) => [vehicle.id, vehicle])) },
+        }));
+      } catch (error) {
+        console.error('fleet summaries', toErrorMessage(error));
+      }
+    },
+  }));
+}
+
+export type VehicleSummaryStore = ReturnType<typeof createVehicleSummaryStore>;
+```
+
+`libs/fleet/data-access/src/lib/vehicle-summaries.tsx`
+
+```tsx
 'use client';
 
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  emptyFilter, isOverdue, matchesFilter,
-  type WorkOrder, type WorkOrderFilter,
-} from '@fleetline/maintenance/model';
-import { workOrdersHttp } from './work-orders.http';
+import { createContext, use, useEffect, useState, type ReactNode } from 'react';
+import { useStore } from 'zustand';
+import { createVehicleSummaryStore, type VehicleSummaryStore } from './vehicle-summary.store';
 
-export function useWorkOrders(depotId: string, initial?: WorkOrder[]) {
-  const client = useQueryClient();
-  const key = ['work-orders', depotId] as const;
-  const [filter, setFilter] = useState<WorkOrderFilter>({ ...emptyFilter, depotId });
+const VehicleSummaryContext = createContext<VehicleSummaryStore | null>(null);
 
-  const query = useQuery({
-    queryKey: key,
-    queryFn: ({ signal }) => workOrdersHttp.list(depotId, signal),
-    initialData: initial,
-  });
+export function VehicleSummaryProvider({ children }: { children: ReactNode }) {
+  const [store] = useState(createVehicleSummaryStore);
+  return <VehicleSummaryContext value={store}>{children}</VehicleSummaryContext>;
+}
 
-  const assignment = useMutation({
-    mutationFn: ({ id, assigneeId }: { id: string; assigneeId: string }) => workOrdersHttp.assign(id, assigneeId),
-    onMutate: async ({ id, assigneeId }) => {
-      await client.cancelQueries({ queryKey: key });
-      const previous = client.getQueryData<WorkOrder[]>(key);
-      client.setQueryData<WorkOrder[]>(key, (orders) =>
-        orders?.map((order) => (order.id === id ? { ...order, assigneeId } : order)),
-      );
-      return { previous };
-    },
-    onError: (_error, _variables, context) => client.setQueryData(key, context?.previous),
-    onSettled: () => client.invalidateQueries({ queryKey: key }),
-  });
+export function useVehicleSummaries(ids: readonly string[]) {
+  const store = use(VehicleSummaryContext);
+  if (!store) throw new Error('useVehicleSummaries must be used inside <VehicleSummaryProvider>');
+  const entities = useStore(store, (state) => state.entities);
+  const key = ids.join(',');
 
-  const all = query.data ?? [];
-  const visible = all.filter((order) => matchesFilter(order, filter));
+  useEffect(() => {
+    void store.getState().ensureLoaded(key ? key.split(',') : []);
+  }, [store, key]);
 
-  return {
-    visible,
-    overdueCount: all.filter((order) => isOverdue(order, new Date())).length,
-    filter,
-    loading: query.isPending,
-    error: query.error ? String(query.error) : null,
-    filterBy: (change: Partial<Omit<WorkOrderFilter, 'depotId'>>) => setFilter((current) => ({ ...current, ...change })),
-    assign: (order: WorkOrder, assigneeId: string) => assignment.mutate({ id: order.id, assigneeId }),
-  };
+  return entities;
 }
 ```
 
-Il valore restituito ha gli stessi membri. `WorkOrdersPage` non cambia, a parte il passaggio di `initial`, che il `page.tsx` lato server ha caricato con `listWorkOrders`. La regola di Fleetline: **lo stato del server in una query cache, lo stato posseduto dal client in Redux.** Il tabellone di pianificazione, dove i pianificatori trascinano decine di ordini tra meccanici e giorni prima di salvare, è stato del client e resta in Redux; l'elenco degli ordini di lavoro è stato del server.
+L'effect dipende da `key`, non dall'array, perché la feature crea un nuovo array a ogni render.
+
+`libs/fleet/api/src/index.ts`
+
+```ts
+export type { VehicleSummary, VehicleId } from '@fleetline/fleet/model';
+export { VehicleSummaryProvider, useVehicleSummaries } from '@fleetline/fleet/data-access';
+export { VehicleBadge } from '@fleetline/fleet/ui-vehicle-badge';
+```
 
 ### 12.9. Insidie specifiche di Next.js
 
-- **`'use client'` è un confine a sé.** Mettetelo nei file di feature e data-access che usano hook, mai in `model` o `util`.
+- **`'use client'` è un confine a sé.** Mettetelo nei client component, nei provider e negli hook, mai in `model`, `util` o nel file con le `queryOptions`, che importa anche il server.
+- **Nessuno store in una variabile di modulo.** `create()` di Zustand o `new QueryClient()` a livello di modulo condivide lo stato tra tutte le richieste sul server. Store e query client nascono nei provider.
+- **Zustand non copia i dati del server.** L'elenco dall'API vive nella query cache; una sua copia nello store è una seconda fonte di verità.
 - **Non importate una libreria server in un file client "solo per il tipo".** I tipi vivono in `model`.
 - **Le server action appartengono a `data-access-server`.** Una feature le importa tramite re-export di `data-access` solo se i tag di lint lo consentono; altrimenti la pagina le passa come props.
 - **I file di route restano sottili.** Un `page.tsx` che accumula logica è la versione Next.js di un app component Angular obeso.
@@ -1626,6 +1750,7 @@ fleetline/
     │   │           ├── work-orders.http.ts
     │   │           ├── work-orders.store.ts
     │   │           ├── work-orders.store.spec.ts
+    │   │           ├── work-orders.providers.ts
     │   │           └── use-work-orders.ts
     │   └── model/
     │       └── src/
@@ -1639,10 +1764,14 @@ fleetline/
     │   └── data-access/
     │       └── src/
     │           └── lib/
+    │               ├── vehicle-summary.store.ts
     │               └── use-vehicle-summaries.ts
+    ├── identity/
+    │   └── api/
     └── shared/
-        ├── data-access-http/
         ├── ui-design-system/
+        ├── ui-layout/
+        ├── util-http/
         └── util-date/
 ```
 
@@ -1651,13 +1780,16 @@ fleetline/
 | Angular | Vue / Nuxt |
 |---|---|
 | Componente `feature` | Un single-file component in `feature-*`; la pagina in `apps/<app>/app/pages/` si limita a renderizzarlo |
-| Componente `ui` | Un componente con `defineProps` e `defineEmits` |
-| Route della `shell` | Le route su file restano nell'app; la libreria shell esporta layout e route middleware |
+| Componente `ui` | Un componente con `defineProps` e `defineEmits`, stili in `<style scoped>` |
+| Route della `shell` | Le route su file restano nell'app; la libreria shell esporta il layout e il route middleware, e l'app si limita a riesportarli |
+| `provideWorkOrders()` su una route | `provideWorkOrders()` chiamato nel layout della shell |
 | NgRx Store / Signal Store | Pinia (setup store) |
 | Selector | `computed` dentro lo store |
 | Effect | Action asincrone nello store; `useAsyncData` per il caricamento durante il rendering lato server |
+| `switchMap` in un effect | `AbortController` in un'action dello store |
 | Servizio facade | Un composable: `useWorkOrders()` |
-| `HttpClient` | `$fetch` |
+| `@Service()` con `HttpClient` | Il composable `useWorkOrdersHttp()` con `$fetch.create` e `useRuntimeConfig()` |
+| `provideStoreDevtools` | Vue DevTools con la scheda di Pinia |
 
 Pinia non separa action e reducer. Questo elimina il log degli eventi e il time-travel debugging di NgRx, ma elimina anche gran parte della cerimonia. Per l'architettura non cambia nulla: lo store è privato di `data-access`, e il composable è la porta.
 
@@ -1669,7 +1801,8 @@ Le regole nelle applicazioni Nuxt di Fleetline:
 
 - le librerie si importano con istruzioni `import` esplicite tramite i loro path alias, mai registrate come cartelle di auto-import;
 - i domini non sono layer di Nuxt, perché i layer importano automaticamente nell'app i propri componenti e composable;
-- l'app mantiene gli auto-import delle API di Vue e Nuxt solo nelle proprie `pages/` e `layouts/`, e il codice delle librerie importa le funzioni di Nuxt da `#imports`.
+- l'app mantiene gli auto-import delle API di Vue e Nuxt solo nelle proprie `pages/` e `layouts/`, e il codice delle librerie importa le funzioni di Nuxt da `#imports`;
+- i layout e i middleware a cui una pagina fa riferimento per nome in `definePageMeta` sono nell'app riesportazioni di una riga da `feature-shell` (sezione 13.5), perché un nome in una stringa il lint non lo può verificare.
 
 `apps/backoffice/nuxt.config.ts`
 
@@ -1678,11 +1811,31 @@ export default defineNuxtConfig({
   modules: ['@pinia/nuxt'],
   components: { dirs: [] },
   imports: { scan: false },
+  css: ['../../libs/shared/ui-design-system/src/styles/tokens.scss'],
   runtimeConfig: { public: { apiUrl: '' } },
 });
 ```
 
 ### 13.3. Lo store
+
+Il servizio HTTP è un composable. Prende la configurazione dal `runtimeConfig` dell'app, cioè dalla DI di Nuxt, come `WorkOrdersHttp` in Angular prende `API_BASE_URL` da `inject()`.
+
+`libs/maintenance/data-access/src/lib/work-orders.http.ts`
+
+```ts
+import { useRuntimeConfig } from '#imports';
+import type { WorkOrder } from '@fleetline/maintenance/model';
+
+export function useWorkOrdersHttp() {
+  const api = $fetch.create({ baseURL: useRuntimeConfig().public.apiUrl });
+
+  return {
+    list: (depotId: string, signal?: AbortSignal) => api<WorkOrder[]>(`/depots/${depotId}/work-orders`, { signal }),
+    assign: (id: string, assigneeId: string) =>
+      api<WorkOrder>(`/work-orders/${id}/assignee`, { method: 'PUT', body: { assigneeId } }),
+  };
+}
+```
 
 `libs/maintenance/data-access/src/lib/work-orders.store.ts`
 
@@ -1693,7 +1846,7 @@ import {
   byDueDate, emptyFilter, isOverdue, matchesFilter,
   type WorkOrder, type WorkOrderFilter,
 } from '@fleetline/maintenance/model';
-import { toErrorMessage } from '@fleetline/shared/data-access-http';
+import { toErrorMessage } from '@fleetline/shared/util-http';
 import { useWorkOrdersHttp } from './work-orders.http';
 
 export const useWorkOrdersStore = defineStore('maintenance/work-orders', () => {
@@ -1702,16 +1855,24 @@ export const useWorkOrdersStore = defineStore('maintenance/work-orders', () => {
   const byId = ref<Record<string, WorkOrder>>({});
   const filter = ref<WorkOrderFilter>({ ...emptyFilter });
   const error = ref<string | null>(null);
+  let inflight: AbortController | undefined;
 
   const all = computed(() => Object.values(byId.value).sort(byDueDate));
   const visible = computed(() => all.value.filter((order) => matchesFilter(order, filter.value)));
   const overdueCount = computed(() => all.value.filter((order) => isOverdue(order, new Date())).length);
 
   async function open(depotId: string) {
+    inflight?.abort();
+    const controller = new AbortController();
+    inflight = controller;
     filter.value = { ...emptyFilter, depotId };
     error.value = null;
-    const orders = await http.list(depotId);
-    byId.value = Object.fromEntries(orders.map((order) => [order.id, order]));
+    try {
+      const orders = await http.list(depotId, controller.signal);
+      byId.value = Object.fromEntries(orders.map((order) => [order.id, order]));
+    } catch (cause) {
+      if (!controller.signal.aborted) error.value = toErrorMessage(cause);
+    }
   }
 
   function filterBy(change: Partial<Omit<WorkOrderFilter, 'depotId'>>) {
@@ -1721,23 +1882,31 @@ export const useWorkOrdersStore = defineStore('maintenance/work-orders', () => {
   async function assign(id: string, assigneeId: string) {
     const order = byId.value[id];
     if (!order) return;
-    const previousAssigneeId = order.assigneeId;
     byId.value[id] = { ...order, assigneeId };
     try {
       byId.value[id] = await http.assign(id, assigneeId);
     } catch (cause) {
-      byId.value[id] = { ...order, assigneeId: previousAssigneeId };
+      byId.value[id] = order;
       error.value = toErrorMessage(cause);
     }
   }
 
-  return { byId, filter, error, visible, overdueCount, open, filterBy, assign };
+  function $reset() {
+    inflight?.abort();
+    byId.value = {};
+    filter.value = { ...emptyFilter };
+    error.value = null;
+  }
+
+  return { byId, filter, error, visible, overdueCount, open, filterBy, assign, $reset };
 });
 ```
 
-`byId`, `filter` ed `error` vengono restituiti perché Pinia li serializzi nel payload renderizzato dal server e il browser parta con lo stesso stato.
+`open` interrompe la richiesta precedente prima di inviarne una nuova: è lo `switchMap` della sezione 9.4 scritto a mano. Senza, un cambio rapido di deposito lascerebbe che una risposta più vecchia sovrascriva una più recente. `assign` non interrompe nulla, come `mergeMap`, e in caso di errore ripristina l'ordine salvato. Gli errori li cattura lo store e li scrive in `error`, come il reducer della sezione 9.3.
 
-### 13.4. Il composable facade
+`byId`, `filter` ed `error` vengono restituiti perché Pinia li serializzi nel payload renderizzato dal server e il browser parta con lo stesso stato. `inflight` non viene restituito, quindi resta privato dell'istanza dello store. Un setup store non riceve `$reset` gratis, quindi lo definisce da sé.
+
+### 13.4. Il composable facade e lo scope dello store
 
 `libs/maintenance/data-access/src/lib/use-work-orders.ts`
 
@@ -1771,7 +1940,32 @@ export async function useWorkOrders(depotId: MaybeRefOrGetter<string>) {
 
 La chiave è una funzione di `depotId`, quindi cambiare deposito fa ripartire il caricamento. Sul server `useAsyncData` aspetta i dati; nel browser la pagina si idrata dal payload senza una seconda richiesta.
 
-### 13.5. Feature, ui e pagina
+Pinia tiene uno store per applicazione, e sul server uno per richiesta. Senza un passo in più, lo stato di maintenance resterebbe in memoria dopo l'uscita dal dominio. `provideWorkOrders()` dà lo stesso scope di un provider su una route in Angular:
+
+`libs/maintenance/data-access/src/lib/work-orders.providers.ts`
+
+```ts
+import { onUnmounted } from 'vue';
+import { useWorkOrdersStore } from './work-orders.store';
+
+export function provideWorkOrders() {
+  const store = useWorkOrdersStore();
+  onUnmounted(() => store.$reset());
+}
+```
+
+`onUnmounted` non viene eseguito sul server, quindi lo stato finisce nel payload prima dell'idratazione, e nel browser sparisce quando il pianificatore lascia maintenance.
+
+`libs/maintenance/data-access/src/index.ts`
+
+```ts
+export { provideWorkOrders } from './lib/work-orders.providers';
+export { useWorkOrders } from './lib/use-work-orders';
+```
+
+Un team che preferisce la separazione tra stato del server e stato del client come in React usa **Pinia Colada**, il livello di query ufficiale per Pinia: il corrispettivo di TanStack Query, con chiavi, cache e mutation ottimistiche. La facade e la feature non cambiano.
+
+### 13.5. Feature, ui, shell e pagina
 
 `libs/maintenance/feature-work-orders/src/lib/WorkOrdersPage.vue`
 
@@ -1782,9 +1976,9 @@ import { StatusFilter, WorkOrderCard } from '@fleetline/maintenance/ui-work-orde
 import { useVehicleSummaries } from '@fleetline/fleet/api';
 import { EmptyState, Spinner } from '@fleetline/shared/ui-design-system';
 
-const props = defineProps<{ depotId: string }>();
+const { depotId } = defineProps<{ depotId: string }>();
 
-const { visible, overdueCount, filter, loading, filterBy, assign } = await useWorkOrders(() => props.depotId);
+const { visible, overdueCount, filter, loading, filterBy, assign } = await useWorkOrders(() => depotId);
 const vehicles = useVehicleSummaries(() => visible.value.map((order) => order.vehicleId));
 </script>
 
@@ -1810,6 +2004,8 @@ const vehicles = useVehicleSummaries(() => visible.value.map((order) => order.ve
 </template>
 ```
 
+Vue 3.5 mantiene la reattività delle props dopo la destrutturazione, quindi `() => depotId` segue il cambio di route.
+
 `libs/maintenance/ui-work-order-card/src/lib/WorkOrderCard.vue`
 
 ```vue
@@ -1819,10 +2015,10 @@ import { isOverdue, type WorkOrder } from '@fleetline/maintenance/model';
 import { Badge, MechanicPicker } from '@fleetline/shared/ui-design-system';
 import { formatRelative } from '@fleetline/shared/util-date';
 
-const props = defineProps<{ workOrder: WorkOrder; vehicleLabel: string }>();
+const { workOrder, vehicleLabel } = defineProps<{ workOrder: WorkOrder; vehicleLabel: string }>();
 const emit = defineEmits<{ assign: [assigneeId: string] }>();
 
-const overdue = computed(() => isOverdue(props.workOrder, new Date()));
+const overdue = computed(() => isOverdue(workOrder, new Date()));
 </script>
 
 <template>
@@ -1840,6 +2036,78 @@ const overdue = computed(() => isOverdue(props.workOrder, new Date()));
     />
   </article>
 </template>
+
+<style scoped lang="scss">
+.card {
+  display: grid;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+}
+
+.card--overdue {
+  border-left: 4px solid var(--ds-danger);
+}
+
+.vehicle,
+.due {
+  color: var(--ds-text-muted);
+}
+</style>
+```
+
+La shell esporta un layout che chiama `provideWorkOrders()` e un middleware con il controllo dei permessi:
+
+`libs/maintenance/feature-shell/src/lib/MaintenanceLayout.vue`
+
+```vue
+<script setup lang="ts">
+import { provideWorkOrders } from '@fleetline/maintenance/data-access';
+import { AppLayout } from '@fleetline/shared/ui-layout';
+
+provideWorkOrders();
+</script>
+
+<template>
+  <AppLayout>
+    <slot />
+  </AppLayout>
+</template>
+```
+
+`libs/maintenance/feature-shell/src/lib/require-maintenance-read.ts`
+
+```ts
+import { abortNavigation, defineNuxtRouteMiddleware } from '#imports';
+import { hasPermission } from '@fleetline/identity/api';
+
+export const requireMaintenanceRead = defineNuxtRouteMiddleware(() => {
+  if (!hasPermission('maintenance:read')) return abortNavigation({ statusCode: 403 });
+});
+```
+
+L'app si limita a riesportarli, così il lint vede l'import da `feature-shell`:
+
+`apps/backoffice/app/layouts/maintenance.vue`
+
+```vue
+<script setup lang="ts">
+import { MaintenanceLayout } from '@fleetline/maintenance/feature-shell';
+</script>
+
+<template>
+  <MaintenanceLayout>
+    <slot />
+  </MaintenanceLayout>
+</template>
+```
+
+`apps/backoffice/app/middleware/maintenance-read.ts`
+
+```ts
+export { requireMaintenanceRead as default } from '@fleetline/maintenance/feature-shell';
 ```
 
 `apps/backoffice/app/pages/maintenance/depots/[depotId]/work-orders.vue`
@@ -1861,11 +2129,29 @@ const depotId = computed(() => String(route.params.depotId));
 </template>
 ```
 
+In Vue `useVehicleSummaries` di `fleet/api` è un piccolo store Pinia con un'action `ensureLoaded`, uguale a quella della sezione 12.8, e un composable che la chiama:
+
+`libs/fleet/data-access/src/lib/use-vehicle-summaries.ts`
+
+```ts
+import { storeToRefs } from 'pinia';
+import { toValue, watch, type MaybeRefOrGetter } from 'vue';
+import { useVehicleSummaryStore } from './vehicle-summary.store';
+
+export function useVehicleSummaries(ids: MaybeRefOrGetter<readonly string[]>) {
+  const store = useVehicleSummaryStore();
+  watch(() => toValue(ids).join(','), (key) => store.ensureLoaded(key ? key.split(',') : []), { immediate: true });
+  return storeToRefs(store).entities;
+}
+```
+
 ### 13.6. Insidie specifiche di Nuxt
 
 - **Il lint dei file `.vue`** richiede `vue-eslint-parser` nella configurazione di ESLint, altrimenti la regola di confine salta in silenzio ogni componente. Per questo il pattern `files` della sezione 8.2 include `**/*.vue`.
 - **Uno store per richiesta.** Pinia con `@pinia/nuxt` ne crea già uno per richiesta sul server. Non tenete mai stato in un `ref` a livello di modulo in una libreria: sul server sarebbe condiviso tra gli utenti.
 - **`useAsyncData` appartiene alla facade**, non allo store. Lo store resta utilizzabile dai test e dal codice solo client.
+- **Un `await` al livello più alto di `<script setup>`** richiede un `<Suspense>` sopra il componente. Le pagine di Nuxt ce l'hanno; un componente feature renderizzato altrove va avvolto in uno.
+- **Solo stili `scoped`.** Un blocco `<style>` senza `scoped` in una libreria finisce nel CSS globale di tutta l'applicazione.
 
 ## 14. Fianco a fianco
 
@@ -1876,16 +2162,21 @@ Lo stesso caso d'uso in tre framework, file per file:
 | Libreria | Angular | React / Next.js | Vue / Nuxt |
 |---|---|---|---|
 | `model` | `work-order.ts` | lo stesso file | lo stesso file |
-| stato in `data-access` | `createFeature` + `createEntityAdapter` | `createSlice` + `createEntityAdapter` | setup store di Pinia |
-| effect in `data-access` | `createEffect` funzionale | listener middleware | action asincrone dello store + `useAsyncData` |
+| stato in `data-access` | `createFeature` + `createEntityAdapter` | TanStack Query (server) + Zustand (client) | setup store di Pinia |
+| effect in `data-access` | `createEffect` funzionale | `queryFn` e `useMutation` | action asincrone dello store + `useAsyncData` |
+| concorrenza | `switchMap` / `mergeMap` | chiave della query + `signal` | `AbortController` |
+| servizio HTTP | `@Service()` + `HttpClient` | modulo sopra `createApiClient` | composable con `$fetch.create` |
 | facade in `data-access` | `WorkOrdersFacade` (signal) | `useWorkOrders()` (valori) | `useWorkOrders()` (ref) |
+| scope dello stato | `provideWorkOrders()` sulla route | `<WorkOrdersProvider>` nel layout della shell | `provideWorkOrders()` nel layout della shell |
 | `ui` | `input()` / `output()` | props / callback | `defineProps` / `defineEmits` |
-| `feature` | componente standalone | client component | single-file component |
-| `shell` | `Routes` con `providers` | componente di layout, segmento di route | layout + route middleware |
+| stili `ui` | `styleUrl`, incapsulamento emulato | CSS Modules | `<style scoped>` |
+| `feature` | componente standalone, `OnPush` predefinito | container server + client component | single-file component |
+| `shell` | `Routes` con `providers` e `canActivate` | layout server con provider | layout + route middleware |
 | route dell'app | `loadChildren` | `page.tsx` | `pages/*.vue` |
+| facade finta nei test | provider in `TestBed` | `vi.mock` del modulo | `vi.mock` del modulo |
 | confini | `@nx/enforce-module-boundaries` | la stessa regola | la stessa regola, con `vue-eslint-parser` |
 
-Ciò che resta identico in tutti e tre: la cartella di ogni file, i tag, la regola di lint, la libreria `model`, i membri della facade e i test della libreria `model`. Chi passa da un'app di Fleetline all'altra deve reimparare solo il framework.
+Ciò che resta identico in tutti e tre: la cartella di ogni file, i tag, la regola di lint, la libreria `model`, i membri della facade (in React senza `open()`, perché la query si apre da sola), gli stili dei componenti e i test della libreria `model`. Chi passa da un'app di Fleetline all'altra deve reimparare solo il framework.
 
 ## 15. Test per tipo di libreria
 
@@ -1895,8 +2186,8 @@ Ogni tipo ha un genere di test naturale, e i confini rendono ognuno di essi econ
 |---|---|---|---|
 | `model`, `util` | Semplici unit test, senza framework | millisecondi | niente |
 | reducer e selector di `data-access` | Test di funzioni pure | millisecondi | niente |
-| effect / listener di `data-access` | Test con un client HTTP finto | veloce | HTTP |
-| facade | Integrazione con lo store reale | veloce | HTTP |
+| effect, query e mutation di `data-access` | Test con la rete simulata da MSW | veloce | HTTP |
+| facade | Integrazione con lo store reale | veloce | HTTP (MSW) |
 | `ui` | Test di componente, story in Storybook | veloce | niente, ha solo input |
 | `feature` | Test di componente con una facade finta | veloce | la facade |
 | app | End-to-end con Playwright, pochi flussi | lento | il back-end, o niente |
@@ -1969,6 +2260,52 @@ it('assigns the chosen mechanic', async () => {
 });
 ```
 
+In React e Vue la facade non arriva tramite DI, quindi il test della feature sostituisce il modulo. Il principio è lo stesso: il componente non vede nulla oltre alla facade e alle librerie `ui`.
+
+`libs/maintenance/feature-work-orders/src/lib/work-orders-page.spec.tsx`
+
+```tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { expect, it, vi } from 'vitest';
+import { useWorkOrders } from '@fleetline/maintenance/data-access';
+import { aWorkOrder } from '@fleetline/maintenance/model/testing';
+import { WorkOrdersPage } from './work-orders-page';
+
+vi.mock('@fleetline/maintenance/data-access', () => ({ useWorkOrders: vi.fn() }));
+vi.mock('@fleetline/fleet/api', () => ({ useVehicleSummaries: () => ({}) }));
+vi.mock('@fleetline/maintenance/ui-work-order-card', () => ({
+  StatusFilter: () => null,
+  WorkOrderCard: ({ onAssign }: { onAssign: (assigneeId: string) => void }) => (
+    <button type="button" onClick={() => onAssign('mech-7')}>
+      assign
+    </button>
+  ),
+}));
+
+it('assigns the chosen mechanic', async () => {
+  const order = aWorkOrder({ id: 'wo-1' });
+  const assign = vi.fn();
+  vi.mocked(useWorkOrders).mockReturnValue({
+    visible: [order],
+    overdueCount: 0,
+    filter: { depotId: 'd-1', status: 'all', query: '' },
+    loading: false,
+    error: null,
+    filterBy: vi.fn(),
+    assign,
+  });
+
+  render(<WorkOrdersPage depotId="d-1" />);
+  await userEvent.click(screen.getByRole('button', { name: 'assign' }));
+
+  expect(useWorkOrders).toHaveBeenCalledWith('d-1');
+  expect(assign).toHaveBeenCalledWith(order, 'mech-7');
+});
+```
+
+In Vue lo stesso test si scrive con `@vue/test-utils` e lo stesso `vi.mock`, e un componente con `await` in `<script setup>` si monta con `mountSuspended` di `@nuxt/test-utils`. Nei test di integrazione della facade gli store Pinia li sostituisce `createTestingPinia` di `@pinia/testing`, e la rete in tutti e tre i framework la simula MSW, così i test di `data-access` non dipendono da come il servizio HTTP riceve la configurazione.
+
 I builder dei dati di test come `aWorkOrder` vivono in un entry point secondario di `model` (`@fleetline/maintenance/model/testing`), così i test di ogni framework usano gli stessi.
 
 ## 16. Crescere fino a questa struttura e migrare
@@ -2012,7 +2349,13 @@ Per un'applicazione, un team e uno o due domini, la struttura completa costa pi�
 No. Lo stato condiviso e di lunga durata che più feature leggono va in uno store. Lo stato dei form, i pannelli aperti o chiusi e altro stato posseduto da un solo componente restano nel componente, con signal o con un Signal Store a livello di componente.
 
 **NgRx Store o NgRx Signal Store?**
-Entrambi si adattano all'architettura, entrambi vivono in `data-access`, e la facade nasconde la scelta. Fleetline usa lo Store dove un log degli eventi e i devtools ripagano (manutenzione, pianificazione) e il Signal Store per i domini più semplici (riepiloghi dei veicoli, notifiche).
+Entrambi si adattano all'architettura, entrambi vivono in `data-access`, e la facade nasconde la scelta. Fleetline usa lo Store dove un log degli eventi e i devtools ripagano (manutenzione, pianificazione) e il Signal Store per i domini più semplici (riepiloghi dei veicoli, notifiche). Il plugin degli eventi del Signal Store (`@ngrx/signals/events`) gli porta eventi in stile Flux, quindi il log degli eventi non è più l'unico argomento a favore dello Store classico.
+
+**E lo stato del server in Angular?**
+In Angular 22 `resource`, `rxResource` e `httpResource` sono stabili, e quando due richieste si sovrappongono conta solo la più recente, come con `switchMap`. Per i dati che si leggono soprattutto, sono il corrispettivo Angular di TanStack Query e Pinia Colada: `data-access` contiene un `httpResource` e la facade ne espone `value()` e `isLoading()`. La feature non cambia.
+
+**Perché in React Zustand e TanStack Query, e non Redux Toolkit?**
+Entrambe le varianti rispettano le stesse regole di confine ed entrambe si nascondono dietro la stessa facade. Redux Toolkit offre ciò che offre NgRx Store: slice, `createEntityAdapter`, listener middleware e un log degli eventi completo. In Next.js però la maggior parte dello stato è stato del server, e ciò che resta sul lato client è poco, quindi Fleetline tiene i dati nella query cache e il resto in piccoli store Zustand con action con nome nei devtools. Un team che ha bisogno di un log degli eventi in un grande dominio client può usare lì Redux Toolkit.
 
 **Una facade non è solo un livello in più?**
 Sì, e la sezione 10 dice quando ne vale la pena. In React e Vue, l'hook o il composable è comunque il modo idiomatico di condividere l'accesso allo stato, quindi lì la facade non costa quasi nulla.
@@ -2027,4 +2370,4 @@ No. Tutto qui viene compilato in un'unica applicazione per ogni cartella di app.
 Condividono le librerie `model` e `util`, con il tag `framework:agnostic`, e i builder dei dati di test. Componenti e store sono specifici di ogni framework. In Fleetline circa un quinto del codice front-end è agnostico rispetto al framework.
 
 **Dove approfondire?**
-Gli articoli di Manfred Steyer e l'e-book gratuito *Enterprise Angular* su [angulararchitects.io](https://www.angulararchitects.io/), la [documentazione di Nx](https://nx.dev/) sui confini tra moduli, [Sheriff](https://github.com/softarc-consulting/sheriff) e la [documentazione di NgRx](https://ngrx.io/).
+Gli articoli di Manfred Steyer e l'e-book gratuito *Enterprise Angular* su [angulararchitects.io](https://www.angulararchitects.io/), la [documentazione di Nx](https://nx.dev/) sui confini tra moduli, [Sheriff](https://github.com/softarc-consulting/sheriff), la [documentazione di NgRx](https://ngrx.io/), [TanStack Query](https://tanstack.com/query), [Zustand](https://zustand.docs.pmnd.rs/) e [Pinia](https://pinia.vuejs.org/).

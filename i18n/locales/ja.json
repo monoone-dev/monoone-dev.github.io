@@ -258,7 +258,7 @@
     "posts": {
       "frontendArchitecture": {
         "title": "大規模フロントエンドのアーキテクチャ：Angular、React、VueでのNx、NgRx、ファサード",
-        "description": "Manfred Steyerのドメインとライブラリ型のモデルに沿って大規模なフロントエンドを構成する方法。Nxの境界、任意のファサードを持つNgRx、そしてNext.jsとNuxtでの同じルール。",
+        "description": "Manfred Steyerのドメインとライブラリ型のモデルに沿った大規模フロントエンド。Nxの境界、Angular 22でのファサード付きNgRx、Next.jsでのZustandとTanStack Query、NuxtでのPinia。",
         "short": "フロントエンドアーキテクチャ"
       },
       "slat": {
