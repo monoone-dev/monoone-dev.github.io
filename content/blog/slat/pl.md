@@ -6,7 +6,7 @@ Ta strona jest kompletną dokumentacją. Napisaliśmy ją tak, żeby zespół, k
 
 Numery sekcji są stałe. Repozytorium, które stosuje SLAT, trzyma krótką kopię reguł w `docs/slat/SLAT.md` z tymi samymi numerami, więc odwołanie takie jak „sekcja 17.8” znaczy to samo na tej stronie i w repozytorium. Gdy te dwa teksty się rozchodzą, oba poprawia się tego samego dnia. Nową sekcję dodaje się tuż przed historią wersji, która zawsze zostaje ostatnia.
 
-> **Wersja 1.3** · 25 października 2026. Wersja 1.3 dodaje sekcję 23, *Pluginy*: opcjonalną część dla produktów, w których użytkownik włącza i wyłącza funkcje. Mówi, kiedy funkcja jest pluginem, podaje jedną regułę o kierunku (slice bazowy nigdy nie importuje slice'a pluginu), punkty rozszerzeń, jeden build z przełącznikiem przy starcie i checki, które pilnują, żeby to było uczciwe. Workspace bez pluginów nie wymaga żadnej zmiany. Wersja 1.3 poprawia też resztę dokumentu tam, gdzie przeczył sam sobie albo zostawiał otwarte pytanie: od komendy testów w 22.1 po kompletny przykładowy aktor w 9.4. Pełna historia jest w sekcji 24.
+> **Wersja 1.4** · 7 listopada 2026. Wersja 1.4 dodaje sekcję 24, *Paczki pluginów*, opcjonalną i opartą na sekcji 23: pluginy wydawane osobno jako podpisane programy działające we własnym procesie, z manifestem, protokołem JSON-RPC przez stdio, podpisem i sklepem, instalacją, aktualizacją, auto-aktualizacją i odinstalowaniem, uprawnieniami, testami i checkami. Sekcja 23.11 wskazuje teraz na nią. Workspace bez paczek nie wymaga zmian. Pełna historia jest w sekcji 25.
 
 ## 1. Po co jest SLAT
 
@@ -2148,12 +2148,138 @@ Gdy slice jest w trakcie zamiany w plugin (23.9), check odejmuje jego listę baz
 
 ### 23.11. Pluginy z zewnątrz
 
-Kod napisany przez kogoś innego i ładowany w czasie działania aplikacji jest poza SLAT. Rust nie ma stabilnego interfejsu binarnego, a kod załadowany do procesu może pociągnąć za sobą całą aplikację. Rozszerzenie z zewnątrz działa jako osobny proces i rozmawia z aplikacją przez wejście w `app/src/doors/`, na przykład serwer MCP, na tych samych zasadach co każde inne wejście. Wewnątrz aplikacji to wejście, nie plugin.
+Kod napisany przez kogoś innego i ładowany do procesu aplikacji zostaje poza SLAT-em. Rust nie ma stabilnego interfejsu binarnego, a kod załadowany do procesu może pociągnąć za sobą całą aplikację. Kod wydawany osobno działa jako własny proces: rozszerzenie z zewnątrz to wejście w `app/src/doors/`, np. serwer MCP, a plugin wydawany osobno to paczka (sekcja 24).
 
-## 24. Historia wersji
+## 24. Paczki pluginów
+
+Nowe w 1.4. **Opcjonalne**, stoi na sekcji 23. Produkt, który tylko włącza i wyłącza wbudowane funkcje, kończy na sekcji 23.
+
+Paczka pluginu to plugin wydawany osobno: podpisany program, który użytkownik pobiera ze sklepu produktu, z własną wersją, aktualizowany bez nowego wydania aplikacji i usuwany razem ze swoimi danymi. Sekcja 23 trzyma każdy plugin w jednym buildzie. Ta sekcja dokłada paczki bez ładowania obcego kodu do aplikacji: paczka zawsze działa jako **osobny proces**.
+
+### 24.1. Plugin wbudowany czy paczka
+
+| Pytanie | Plugin wbudowany (sekcja 23) | Paczka |
+|---|---|---|
+| Kto wydaje kod | wydanie aplikacji | sklep, we własnym rytmie |
+| Gdzie działa kod | w procesie aplikacji | w osobnym procesie |
+| Jak sięga do bazy | `hooks.rs`, `Snapshot`, zdarzenia | rejestracje jako dane i protokół |
+| Własny ekran | dowolny ekran frontu | ustawienia i małe widoki opisane danymi |
+| Włączenie | po restarcie | od razu, bo startuje tylko proces |
+
+Funkcja zostaje wbudowana, gdy potrzebuje własnego dużego ekranu albo wnętrza silnika. Staje się paczką, gdy rozmawia z jedną usługą z zewnątrz i daje bazie kilka jasno określonych rzeczy: źródło zdarzeń, narzędzia dla agenta, ustawienia.
+
+### 24.2. Zasada procesu
+
+Kod paczki nigdy nie działa w procesie aplikacji: żadnego `dlopen`, `libloading`, silnika WebAssembly w aplikacji, skryptu paczki w oknie ani zmiany polityki bezpieczeństwa okna dla niej. Rust nie ma stabilnego interfejsu binarnego, a kod załadowany do procesu może pociągnąć za sobą całą aplikację (23.11). Paczka to program: aplikacja go uruchamia, rozmawia z nim i zatrzymuje go jak każdy inny proces potomny.
+
+### 24.3. Układ
+
+```tree
+core/src/plugin_host/          base slice: manifests, install, start, stop, update
+  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/plugin_host/           commands for the plugin screen
+crates/<product>-plugin-sdk/   protocol types and the stdio loop, no dependency on core
+plugins/<id>/                  one crate per package written by the product team
+```
+
+`plugin_host` jest slice'em bazowym. Zna paczki tylko przez ich manifesty; żaden slice bazowy nie nazywa paczki. Crate SDK to jedyne miejsce z typami protokołu, więc host i każda paczka mówią tym samym językiem.
+
+### 24.4. Manifest
+
+`manifest.json` w paczce:
+
+```json
+{
+  "schema": 1,
+  "id": "discord",
+  "version": "1.2.0",
+  "requires": "1.16.0",
+  "protocol": 1,
+  "entry": "bin/discord-plugin",
+  "permissions": {
+    "network": ["discord.com"],
+    "secrets": ["DISCORD_TOKEN"],
+    "projectFiles": "none",
+    "data": true
+  },
+  "provides": {
+    "triggerSources": [{ "name": "discord", "condition": "channel" }],
+    "agentTools": true,
+    "settings": true
+  }
+}
+```
+
+`id` to ten sam slug co w sklepie i w ocenach. `version` to SemVer, `requires` to najniższa wersja aplikacji, `protocol` to wersja protokołu z 24.5. Nieznane pola są pomijane (8.4); brak wymaganego pola odmawia instalacji.
+
+### 24.5. Protokół
+
+JSON-RPC 2.0, jedna wiadomość na linię, przez stdin i stdout procesu. Ma kształt serwera MCP, więc paczka w jednej sesji daje agentom narzędzia i odpowiada na własne metody aplikacji w przestrzeni `<produkt>/`:
+
+| Kierunek | Metoda | Po co |
+|---|---|---|
+| host do paczki | `<produkt>/initialize` | wersja protokołu i aplikacji, przyznane uprawnienia, język |
+| host do paczki | `<produkt>/settings/describe`, `<produkt>/settings/apply` | ustawienia jako dane |
+| host do paczki | `<produkt>/trigger/items` | pozycje dla źródła wyzwalacza |
+| host do paczki | `<produkt>/shutdown` | zamknięcie przed zatrzymaniem grupy procesów |
+| paczka do hosta | `<produkt>/log`, `<produkt>/notify` | linia debug, jedno zdanie dla użytkownika |
+| paczka do hosta | `<produkt>/data/read`, `<produkt>/data/write` | pliki w katalogu danych paczki |
+
+Każde wywołanie ma limit czasu i rozmiaru. Nieznana metoda ani pole nigdy niczego nie wywracają (8.4). Paczka, która przestaje odpowiadać, startuje od nowa; po trzech upadkach w dziesięć minut zostaje wyłączona, a ekran pluginu mówi to jednym zdaniem.
+
+### 24.6. Punkty rozszerzeń dla paczek
+
+Paczka sięga do bazy przez te same punkty co plugin wbudowany (23.4), ale zawsze jako dane:
+
+- **Rejestracje.** Host rejestruje to, co daje manifest, np. źródło wyzwalacza jako wartość (`AddedSource { name, condition }`), a baza pyta hosta o pozycje. Baza nie nazywa żadnej paczki.
+- **Hooki.** Gdy slice bazowy wystawia hook, host jest jego implementacją. Hook odpowiada bez I/O (23.4), więc host trzyma ostatnią odpowiedź paczki w swoim aktorze, a hook ją czyta.
+- **Narzędzia.** Narzędzia dla agentów trafiają do bazy jako połączenie z procesem paczki, jak każdy serwer MCP.
+- **Ekrany.** Paczka opisuje swoje ustawienia i małe widoki danymi (pola, etykiety, po jednym zdaniu pomocy); front rysuje je własnymi komponentami. Paczka nigdy nie dostarcza kodu frontu.
+
+### 24.7. Podpis i sklep
+
+Sklep wymienia każdą wersję paczki z plikami per platforma, rozmiarem, `sha256` i podpisem Ed25519 nad skrótem i manifestem. Klucz prywatny leży poza repo i poza jego CI; aplikacja ma klucze publiczne, dwa naraz, żeby dało się wymienić klucz. Aplikacja instaluje tylko spod własnego adresu sklepu, tylko z ważnym podpisem, zgodnym skrótem i rozmiarem oraz manifestem, którego `id` i `version` zgadzają się ze sklepem. Lista `revoked` w sklepie zatrzymuje już zainstalowaną wersję. Aplikacja nigdy nie instaluje niższej wersji niż ma, chyba że wybierze ją użytkownik.
+
+### 24.8. Cykl życia
+
+| Akcja | Co się dzieje |
+|---|---|
+| Instalacja | pobranie, sprawdzenie rozmiaru, skrótu, podpisu i manifestu, pytanie o uprawnienia, rozpakowanie do `plugins/<id>/<version>/`, zapis wyboru, start procesu |
+| Aktualizacja | instalacja nowej wersji obok starej, zatrzymanie starego procesu, start nowego, usunięcie starego katalogu; gdy nowa nie wstanie, powrót |
+| Wyłączenie | zatrzymanie procesu i usunięcie jego rejestracji; pliki i dane zostają |
+| Odinstalowanie | po potwierdzeniu z listą tego, co zniknie: zatrzymanie, usunięcie paczki, jej danych, rejestracji i wyboru |
+| Aktualizuj automatycznie | przełącznik per paczka, domyślnie wyłączony; instaluje sam tylko, gdy wersja nie jest wycofana, aplikacja jest dość nowa, a uprawnienia nie rosną |
+
+Wybór jest w pliku, jak w 23.5. Pliki są prawdą; indeks nigdy nie trzyma tego, czego nie da się z nich odtworzyć.
+
+### 24.9. Uprawnienia
+
+Manifest prosi, użytkownik zgadza się przy instalacji. Aktualizacja, która poszerza uprawnienia, nigdy nie instaluje się sama. Uprawnienia ograniczają to, co paczce daje **host** (sekrety, pliki projektu, katalog danych). Nie ograniczają tego, co program może zrobić z prawami użytkownika, dlatego sklep przyjmuje tylko paczki podpisane przez zespół produktu, a ekran pluginu mówi to jednym zdaniem. Produkt, który chce dla paczek także piaskownicy systemu, zapisuje tę regułę we własnym repo.
+
+### 24.10. Testy
+
+| Co | Jak | Co jest dowodem |
+|---|---|---|
+| protokół | paczka testowa zbudowana z SDK, sterowana przez stdio | odpowiedzi i odmowy dla każdej metody |
+| instalacja | sklep i klucz zrobione w teście | zły podpis, zły skrót, wersja wycofana i niższa są odrzucone zdaniem |
+| proces | paczka testowa pada celowo | restart, potem wyłączenie po trzech upadkach |
+| baza bez paczek | `AppState` bez żadnej zainstalowanej paczki | baza działa, jej zdania się nie zmieniają (23.8) |
+| ekran pluginu | przez wejście (14.5) | zdania, które użytkownik czyta w każdym stanie |
+
+### 24.11. Egzekwowanie
+
+| Reguła | Kto pilnuje |
+|---|---|
+| żadnego kodu paczki w procesie aplikacji | check, który pada na `libloading`, `dlopen` i silniku WebAssembly w workspace |
+| tylko `plugin_host` uruchamia paczkę i czyta katalog paczek | check grepem, jak dla `store::writer` (16) |
+| SDK nie zależy od `core` | `Cargo.toml`, jak w 5.1 |
+| żaden slice bazowy nie nazywa paczki | `checks/slat-plugins.sh` (23.10) |
+
+## 25. Historia wersji
 
 | Wersja | Data | Zmiany |
 |---|---|---|
+| 1.4 | 7 listopada 2026 | Sekcja 24, *Paczki pluginów*, opcjonalna: plugin wbudowany czy paczka, zasada procesu, slice bazowy `plugin_host` i crate SDK, manifest, protokół JSON-RPC przez stdio, punkty rozszerzeń jako dane, podpis i sklep, instalacja, aktualizacja, auto-aktualizacja i odinstalowanie, uprawnienia, testy i checki. Sekcja 23.11 wskazuje na paczki. Historia wersji przechodzi z sekcji 24 do sekcji 25; sekcje 1–23 zachowują numery. |
 | 1.3 | 25 października 2026 | Sekcja 23, *Pluginy*, opcjonalna: kiedy funkcja jest pluginem, manifest w `plugin.rs`, slice'y bazowe, które nigdy nie importują slice'ów pluginów, trzy punkty rozszerzeń (słuchanie, odpowiedź na hook, własne wejście), hooki jako jedyny trait dozwolony z jedną implementacją, jeden build z wyborem w pliku czytanym przy starcie, `Result<…, PluginOff>` w `AppState`, granica z frontendem, plugin we własnym crate'cie, testy z wszystkimi pluginami wyłączonymi, zamiana istniejącego slice'a w plugin, `checks/slat-plugins.sh` i rozszerzenia z zewnątrz jako wejścia. Słownik: plugin, slice bazowy, hook. Drzewo decyzyjne (17.8) i sekcja do przewodnika dla kontrybutorów (18) wspominają o pluginach. Historia wersji przechodzi z sekcji 23 do sekcji 24; sekcje od 1 do 22 zachowują swoje numery. Poprawki: codzienna komenda testów w 22.1 to `cargo t`; `unwrap()` i `panic!` są zakazane także w `kit` (13, 16); cache serwisu może trzymać krótką blokadę, a blokadę wewnątrz aktora łapie nowy check (16.4, 16.5); `kit::paths` wybiera starszą ścieżkę według tego, czy ona istnieje, a nie według systemu operacyjnego (12.4); nazwy plików przed blokami kodu zamiast komentarzy w ich środku; drzewo workspace'u w 5 to skrócony kształt; szwy na danych w tabeli testowania (9.5, 14); rozróżnienie *Command* i *komendy Tauri* (3); rozróżnienie wejścia i domeny za nim (17.8); błędy slice'a mapują się na `IpcError` w jego własnym `dto.rs` (6.2, 7.1, 13); `store` wydaje połączenia do odczytu, z checkiem (5, 16); checki obejmują sub-slice'y (16.1, 16.4); `checks/slat-edges.sh` widzi importy grupowe (16.4, 23.10); przykładowy aktor w 9.4 jest kompletny (`Deps`, `execute`, `Snapshot`, `mod.rs`, `Failed`) i wysyła snapshot tylko wtedy, gdy się zmienił; `StartRequest::new` zamiast `Default` (10); nowa podsekcja 14.5, test przez wejście. |
 | 1.2 | 25 października 2026 | Sekcja 22, *Czas buildu i testów*: gdzie idzie czas kompilacji, ustawienia buildu (w tym `strip = false` i optymalizowane zależności testów), jeden zestaw feature'ów, uruchamianie testów, na które zmiana może wpłynąć, osobny `target/` dla każdej kopii roboczej, startujący z klonu copy-on-write, CI z cache'em zapisywanym tylko z `main`, co sprawia, że build zaczyna od nowa, i czyszczenie `target/`. Ciężkie drivery natywne w crate'cie, od którego `core` nie zależy (5.3). Nowe podsekcje 14.3 (mutanty w diffie), 14.4 (testy własności dla `update`) i 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checki dla reguł, które ich nie miały: czystość `logic.rs`, `mod.rs` slice'a, cykle między slice'ami, komenda o 10 liniach, `unwrap()` i `panic!`. Szwy na danych zamiast feature'a `fake`. Poprawiony koszt crate'a (5.2, 5.3), `resolver = "3"` dla edycji 2024 (5.1), krok cache'u w jobie platform (16.3). Historia wersji przechodzi z sekcji 22 do sekcji 23; sekcje od 1 do 21 zachowują swoje numery. |
 | 1.1 | 25 października 2026 | Sekcja 12, *Platformy*: folder `platform/` w `drivers`, kontrakty platformy, zakazy poza `platform/`, reguły dla ścieżek, plików i tekstu, testy platformy, job kompilacji w CI na Linuksie i Windows, przepis na port. Uzupełnienia w tierach, egzekwowaniu, przepisach i drzewie decyzyjnym. |
