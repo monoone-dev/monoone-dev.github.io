@@ -6,7 +6,7 @@ This page is the complete reference. It is written so that a team that has never
 
 Section numbers are stable. A repository that follows SLAT keeps a short copy of the rules in `docs/slat/SLAT.md` with the same numbers, so a reference such as "section 17.8" means the same thing on this page and in the repository. When the two differ, both are corrected on the same day. A new section is added just before the version history, which always stays last.
 
-> **Version 1.3** · 25 October 2026. Version 1.3 adds section 23, *Plugins*, an optional part for products that let the user switch features on and off: when a feature is a plugin, the one rule about direction (a base slice never imports a plugin slice), extension points, one build with a switch at start, and the checks that keep it honest. A workspace without plugins needs no change. Version 1.3 also corrects the rest of the guide where it contradicted itself or left a question open, from the test command in 22.1 to a complete example actor in 9.4. The full history is in section 24.
+> **Version 1.4** · 7 November 2026. Version 1.4 adds section 24, *Plugin packages*, optional and built on section 23: plugins that ship on their own as signed programs running in their own process, with a manifest, a JSON-RPC protocol over stdio, signing and a store, install, update, automatic update and uninstall, permissions, tests and checks. Section 23.11 now points to it. A workspace without packages needs no change. The full history is in section 25.
 
 ## 1. Why SLAT exists
 
@@ -2148,12 +2148,138 @@ While a slice is being turned into a plugin (23.9), the check subtracts its base
 
 ### 23.11. Plugins from outside
 
-Code written by someone else and loaded while the application runs is outside SLAT. Rust has no stable binary interface, and code loaded into the process can take the whole application down with it. An extension from outside runs as its own process and talks to the application through an entry in `app/src/doors/`, for example an MCP server, with the same rules as any other entry. Inside the application it is an entry, not a plugin.
+Code written by someone else and loaded into the application process stays outside SLAT. Rust has no stable binary interface, and code loaded into the process can take the whole application down with it. Code that ships separately runs as its own process: an extension from outside is an entry in `app/src/doors/`, for example an MCP server, and a plugin that ships on its own is a package (section 24).
 
-## 24. Version history
+## 24. Plugin packages
+
+New in 1.4. **Optional**, and it builds on section 23. A product that only switches built-in features on and off stops at section 23.
+
+A plugin package is a plugin that ships on its own: a signed program the user downloads from the product's store, with its own version, updated without a new release of the application and removed together with its data. Section 23 keeps every plugin inside one build. This section adds packages without loading foreign code into the application: a package always runs as **its own process**.
+
+### 24.1. Built-in plugin or package
+
+| Question | Built-in plugin (section 23) | Package |
+|---|---|---|
+| Who ships the code | the application release | the store, on its own schedule |
+| Where the code runs | inside the application process | a separate process |
+| How it reaches the base | `hooks.rs`, `Snapshot`, events | data registrations and a protocol |
+| Its own screen | any screen of the front-end | settings and small views described as data |
+| Turning it on | after a restart | at once, because only a process starts |
+
+Keep a feature built in when it needs its own large screen or the engine's internals. Make it a package when it talks to one outside service and offers the base a few well-defined things: a source of events, tools for an agent, settings.
+
+### 24.2. The process rule
+
+Package code never runs in the application process: no `dlopen`, no `libloading`, no WebAssembly engine inside the application, no script of the package in the window, and no change to the window's content security policy for it. Rust has no stable binary interface, and code loaded into the process can take the whole application down with it (23.11). A package is a program; the application starts it, talks to it and stops it like any other child process.
+
+### 24.3. Layout
+
+```tree
+core/src/plugin_host/          base slice: manifests, install, start, stop, update
+  model.rs  logic.rs  store.rs  service.rs  actor/
+app/src/plugin_host/           commands for the plugin screen
+crates/<product>-plugin-sdk/   protocol types and the stdio loop, no dependency on core
+plugins/<id>/                  one crate per package written by the product team
+```
+
+`plugin_host` is a base slice. It knows packages only through their manifests; no base slice names a package. The SDK crate is the one place where the protocol types live, so the host and every package speak the same language.
+
+### 24.4. The manifest
+
+`manifest.json` inside the package:
+
+```json
+{
+  "schema": 1,
+  "id": "discord",
+  "version": "1.2.0",
+  "requires": "1.16.0",
+  "protocol": 1,
+  "entry": "bin/discord-plugin",
+  "permissions": {
+    "network": ["discord.com"],
+    "secrets": ["DISCORD_TOKEN"],
+    "projectFiles": "none",
+    "data": true
+  },
+  "provides": {
+    "triggerSources": [{ "name": "discord", "condition": "channel" }],
+    "agentTools": true,
+    "settings": true
+  }
+}
+```
+
+The `id` is the same slug as in the store and in ratings. `version` is SemVer, `requires` is the lowest application version, `protocol` is the protocol version from 24.5. Unknown fields are ignored (8.4); a missing required field refuses the install.
+
+### 24.5. The protocol
+
+JSON-RPC 2.0, one message per line, over the process's stdin and stdout. It has the shape of an MCP server, so a package can serve tools to agents and answer the application's own methods in one session, under a `<product>/` namespace:
+
+| Direction | Method | Purpose |
+|---|---|---|
+| host to package | `<product>/initialize` | protocol and application version, granted permissions, language |
+| host to package | `<product>/settings/describe`, `<product>/settings/apply` | settings as data |
+| host to package | `<product>/trigger/items` | items for a trigger source |
+| host to package | `<product>/shutdown` | close before the process group is stopped |
+| package to host | `<product>/log`, `<product>/notify` | a debug line, one sentence for the user |
+| package to host | `<product>/data/read`, `<product>/data/write` | files in the package's data folder |
+
+Every call has a time limit and a size limit. An unknown method or field never fails anything (8.4). A package that stops answering is restarted; after three crashes in ten minutes it stays off and the plugin screen says so in one sentence.
+
+### 24.6. Extension points for packages
+
+A package reaches the base through the same points as a built-in plugin (23.4), but always as data:
+
+- **Registrations.** The host registers what the manifest provides, for example a trigger source as a value (`AddedSource { name, condition }`), and the base asks the host for items. The base names no package.
+- **Hooks.** When a base slice offers a hook, the host is its implementation. A hook answers without I/O (23.4), so the host keeps the package's last answer in its actor and the hook reads that.
+- **Tools.** Agent tools reach the base as a connection to the package's process, like any MCP server.
+- **Screens.** A package describes its settings and small views as data (fields, labels, one sentence of help each); the front-end draws them with its own components. A package never ships front-end code.
+
+### 24.7. Signing and the store
+
+The store lists every version of a package with its platform files, size, `sha256` and an Ed25519 signature over the hash and the manifest. The private key stays outside the repository and outside its CI; the application carries the public keys, two at a time so a key can be replaced. The application installs only from its own store address, only with a valid signature, a matching hash and size, and a manifest whose `id` and `version` match the store. A `revoked` list in the store stops a version that is already installed. The application never installs a lower version than the one it has unless the user picks it.
+
+### 24.8. Life cycle
+
+| Action | What happens |
+|---|---|
+| Install | download, check size, hash, signature and manifest, ask for the permissions, unpack into `plugins/<id>/<version>/`, record the choice, start the process |
+| Update | install the new version next to the old one, stop the old process, start the new one, remove the old folder; if the new one fails to start, go back |
+| Turn off | stop the process and remove its registrations; files and data stay |
+| Uninstall | after a confirmation that lists what goes: stop, remove the package, its data, its registrations and its choice |
+| Update automatically | a switch per package, off by default; installs on its own only when the version is not revoked, the application is new enough and the permissions do not grow |
+
+The choice is a file, as in 23.5. Files are the truth; the index never holds what cannot be rebuilt from them.
+
+### 24.9. Permissions
+
+The manifest asks; the user grants at install. An update that widens the permissions never installs on its own. Permissions limit what the **host** gives the package (secrets, project files, its data folder). They do not limit what a program can do with the user's rights, so the store accepts only packages the product team signed, and the plugin screen says that in one sentence. A product that also wants an operating-system sandbox for packages writes that rule in its own repository.
+
+### 24.10. Testing
+
+| What | How | What counts as proof |
+|---|---|---|
+| protocol | a test package built from the SDK, driven through stdio | answers and refusals for every method |
+| install | a store and a key made in the test | a bad signature, a bad hash, a revoked and a lower version are refused with a sentence |
+| process | the test package crashes on purpose | restart, then off after three crashes |
+| base without packages | `AppState` with no package installed | the base works and its sentences are unchanged (23.8) |
+| plugin screen | through the entry (14.5) | the sentences the user reads for each state |
+
+### 24.11. Enforcement
+
+| Rule | Who enforces it |
+|---|---|
+| no package code in the application process | a check that fails on `libloading`, `dlopen` and a WebAssembly engine in the workspace |
+| only `plugin_host` starts a package or reads the packages folder | a grep check like the one for `store::writer` (16) |
+| the SDK does not depend on `core` | `Cargo.toml`, as in 5.1 |
+| no base slice names a package | `checks/slat-plugins.sh` (23.10) |
+
+## 25. Version history
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.4 | 7 November 2026 | Section 24, *Plugin packages*, optional: a built-in plugin or a package, the process rule, the `plugin_host` base slice and the SDK crate, the manifest, the JSON-RPC protocol over stdio, extension points as data, signing and the store, install, update, automatic update and uninstall, permissions, tests and checks. Section 23.11 points to packages. The version history moves from section 24 to section 25; sections 1 to 23 keep their numbers. |
 | 1.3 | 25 October 2026 | Section 23, *Plugins*, optional: when a feature is a plugin, the manifest in `plugin.rs`, base slices that never import plugin slices, three extension points (listen, answer a hook, own the entry), hooks as the one trait allowed with a single implementation, one build with the choice in a file read at start, `Result<…, PluginOff>` in `AppState`, the front-end boundary, a plugin in its own crate, tests with every plugin off, turning an existing slice into a plugin, `checks/slat-plugins.sh`, and extensions from outside as entries. Vocabulary: plugin, base slice, hook. The decision tree (17.8) and the section for the contributor guide (18) mention plugins. The version history moves from section 23 to section 24; sections 1 to 22 keep their numbers. Corrections: the everyday test command in 22.1 is `cargo t`; `unwrap()` and `panic!` are forbidden in `kit` too (13, 16); a service's cache may hold a short lock, a lock inside an actor is caught by a new check (16.4, 16.5); `kit::paths` picks an older path by whether it exists, not by the operating system (12.4); file names before code blocks instead of comments inside them; the workspace tree in 5 is a shortened shape; data seams in the testing table (9.5, 14); *Command* and *Tauri command* told apart (3); the entry and the domain behind it told apart (17.8); a slice's errors map to `IpcError` in its own `dto.rs` (6.2, 7.1, 13); `store` hands out read connections, with a check (5, 16); checks follow sub-slices (16.1, 16.4); `checks/slat-edges.sh` sees grouped imports (16.4, 23.10); the example actor in 9.4 is complete (`Deps`, `execute`, `Snapshot`, `mod.rs`, `Failed`) and sends a snapshot only when it changed; `StartRequest::new` instead of `Default` (10); new subsection 14.5, a test through the entry. |
 | 1.2 | 25 October 2026 | Section 22, *Build and test time*: where compile time goes, build settings (including `strip = false` and optimized test dependencies), one feature set, running the tests a change can affect, a separate `target/` for each working copy started from a copy-on-write clone, CI with a cache written only from `main`, what makes a build start over, and cleaning `target/`. Heavy native drivers in a crate that `core` does not depend on (5.3). New subsections 14.3 (mutants in the diff), 14.4 (property tests for `update`) and 16.5 (Clippy, `cargo-deny`, `ast-grep`). Checks for rules that had none: purity of `logic.rs`, a slice's `mod.rs`, slice cycles, the 10-line command, `unwrap()` and `panic!`. Data seams preferred over a `fake` feature. Corrected the cost of a crate (5.2, 5.3), `resolver = "3"` for edition 2024 (5.1), the cache step in the platform job (16.3). The version history moves from section 22 to section 23; sections 1 to 21 keep their numbers. |
 | 1.1 | 25 October 2026 | Section 12, *Platforms*: the `platform/` folder in `drivers`, platform contracts, prohibitions outside `platform/`, rules for paths, files and text, platform tests, CI compile job on Linux and Windows, porting recipe. Additions to tiers, enforcement, recipes and the decision tree. |
