@@ -9,7 +9,6 @@ description: Run, understand, debug and extend this repo's CI gate — `pnpm typ
 
 ```bash
 pnpm install --frozen-lockfile   # also runs `nuxt prepare` (postinstall) → generates .nuxt types
-pnpm lint:skills                 # every .claude/skills entry is a symlink to .agents/skills
 pnpm test                        # node --test over i18n/*.test.ts (Node 24 strips the types)
 pnpm typecheck                   # nuxt typecheck → vue-tsc over app, server and shared
 pnpm build                       # nuxt build → .output/

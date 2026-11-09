@@ -20,7 +20,7 @@ Rules for every person and every coding agent working here:
   (`.github/CODEOWNERS`); repository admins may merge their own without one. Every merge to
   `main` deploys the site.
 - **Green before push.** The gate passes locally (the `ci-maintenance` skill):
-  `pnpm install --frozen-lockfile && pnpm lint:skills && pnpm test && pnpm typecheck && pnpm build`.
+  `pnpm install --frozen-lockfile && pnpm test && pnpm typecheck && pnpm build`.
   `pnpm test` runs `i18n/*.test.ts` with Node's built-in test runner (no extra dependencies); it
   checks that every locale file has the same keys, placeholders and plural forms as `en.json`.
 - **No code comments.** Do not write comments in source files (`.ts`, `.vue`, `.scss`, configs,
@@ -30,10 +30,9 @@ Rules for every person and every coding agent working here:
 
 ## Skills
 
-Shared runbooks live in `.agents/skills/`. `.claude/skills/<name>` is a relative symlink to
-`.agents/skills/<name>`. Edit only `.agents/skills`, and when you add a skill, add its symlink too
-(`ln -s ../../.agents/skills/<name> .claude/skills/<name>`). `pnpm lint:skills` (also in CI) fails
-when a link is missing or points elsewhere.
+Shared runbooks live in `.agents/skills/`, the only copy. MonoOne works only through RigOne, which
+reads skills from there and supplies `AGENTS.md` to every agent; there is no `.claude/` or `.codex/`
+configuration in this repository.
 
 | Skill | Use it to |
 | --- | --- |
