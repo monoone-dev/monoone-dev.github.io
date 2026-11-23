@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privado por defecto",
-        "description": "Las funciones en la nube son opcionales. Tus archivos se quedan en tu dispositivo, y lo que envías solo lo ven los servicios de IA que conectes."
+        "description": "Las funciones en la nube son opcionales. Sin ellas, tus archivos se quedan en tu dispositivo, y lo que envías solo lo ven los servicios de IA que conectes."
       },
       "mac": {
         "title": "Mac y web",

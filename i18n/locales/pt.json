@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privado por padrão",
-        "description": "Os recursos na nuvem são opcionais. Seus arquivos ficam no seu dispositivo, e o que você envia só é visto pelos serviços de IA que você conectar."
+        "description": "Os recursos na nuvem são opcionais. Sem eles, seus arquivos ficam no seu dispositivo, e o que você envia só é visto pelos serviços de IA que você conectar."
       },
       "mac": {
         "title": "Mac e web",
