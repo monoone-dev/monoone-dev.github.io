@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privato di default",
-        "description": "Le funzioni cloud sono facoltative. Senza di esse, il tuo lavoro resta sul tuo dispositivo."
+        "description": "Le funzioni cloud sono facoltative. I tuoi file restano sul tuo dispositivo, e ciò che invii lo vedono solo i servizi di IA che colleghi."
       },
       "mac": {
         "title": "Mac e web",

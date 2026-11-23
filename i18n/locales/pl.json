@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Prywatne z założenia",
-        "description": "Funkcje w chmurze są opcjonalne. Bez nich Twoja praca zostaje na Twoim urządzeniu."
+        "description": "Funkcje w chmurze są opcjonalne. Pliki zostają na Twoim urządzeniu, a to, co wysyłasz, widzą tylko usługi AI, które podłączysz."
       },
       "mac": {
         "title": "Mac i web",

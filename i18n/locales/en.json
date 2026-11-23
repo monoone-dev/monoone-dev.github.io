@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Private by default",
-        "description": "Cloud features are opt-in. Without them, your work stays on your device."
+        "description": "Cloud features are opt-in. Your files stay on your device, and only the AI services you connect see what you send them."
       },
       "mac": {
         "title": "Mac and web",

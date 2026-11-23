@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Standardmäßig privat",
-        "description": "Cloud-Funktionen sind optional. Ohne sie bleibt deine Arbeit auf deinem Gerät."
+        "description": "Cloud-Funktionen sind optional. Deine Dateien bleiben auf deinem Gerät, und was du sendest, sehen nur die KI-Dienste, die du verbindest."
       },
       "mac": {
         "title": "Mac und Web",
