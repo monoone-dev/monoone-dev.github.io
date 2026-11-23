@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Piccolo software, privato di default",
-    "description": "MonoOne crea IndexOne, note di riunione private per macOS; RigOne, una sala di controllo per agenti di programmazione; e SurfaceOne, un design system per Angular e Vue. Tutto gratuito."
+    "description": "MonoOne crea IndexOne, note delle riunioni private con l’IA per Mac e web; RigOne, una sala di controllo per agenti di programmazione; e SurfaceOne, un design system per Angular e Vue. Si parte gratis."
   },
   "nav": {
     "principles": "Principi",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privato di default",
-        "description": "Le funzioni cloud sono facoltative e i dati sensibili vengono rimossi prima dell'invio. La condivisione è cifrata end-to-end."
+        "description": "Le funzioni cloud sono facoltative. Senza di esse, il tuo lavoro resta sul tuo dispositivo."
       },
       "mac": {
         "title": "Mac e web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Progetti",
       "title": "Progetti",
-      "description": "Tutto ciò che pubblichiamo oggi: cosa fa ogni prodotto, per chi è e come funziona. Tutto gratis."
+      "description": "Tutto ciò che offriamo oggi: cosa fa ogni prodotto, a chi è rivolto e come funziona. Si parte gratis."
     },
     "links": {
       "download": "Scarica per Mac",
@@ -82,14 +82,14 @@
     "description": "Altri due prodotti sono in arrivo. Ne parleremo quando saranno pronti."
   },
   "indexOne": {
-    "status": "Gratis in accesso anticipato",
-    "tagline": "Note delle riunioni sicure e 100% locali per macOS.",
-    "description": "IndexOne registra le tue chiamate, le trascrive e scrive una nota strutturata in Markdown semplice che è tua, tutto sul tuo Mac. Registrazioni, trascrizioni e note restano al 100% sul tuo dispositivo: nessun account e nessuna elaborazione nel cloud. La tua libreria è conservata in un database cifrato e nulla viene inviato altrove, a meno che tu non lo scelga esplicitamente.",
-    "audience": "Chi passa la giornata in chiamata e vuole note proprie, senza inviare l’audio a un cloud.",
+    "status": "Gratis sul Mac",
+    "tagline": "Note delle riunioni private con l’IA sul tuo Mac, con spazi cloud facoltativi.",
+    "description": "IndexOne registra entrambi i lati di una call senza bot, la trascrive sul tuo Mac e scrive una nota strutturata che puoi verificare sulla registrazione. Nello spazio On this Mac, registrazione, trascrizione e l’assistente Ivy funzionano senza account, e la tua libreria è in un database cifrato. Gli spazi cloud facoltativi si aprono in qualsiasi browser: un account gratuito per iniziare, piani a pagamento quando ti serve di più. Non sono cifrati end-to-end.",
+    "audience": "Chi passa la giornata in call e vuole note verificabili, con la possibilità di tenere l’audio sul proprio Mac.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon e Intel",
-      "noAccount": "Nessun account"
+      "arch": "Apple Silicon (M1 o successivi)",
+      "noAccount": "Nessun account sul Mac"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper sul dispositivo",
-        "description": "La trascrizione avviene in locale con Metal. Nessuna trascrizione nel cloud."
+        "description": "Nello spazio On this Mac la trascrizione gira sul tuo Mac con Metal. Gli spazi cloud vengono trascritti nel cloud."
       },
       "notes": {
         "title": "Note che sono tue",
-        "description": "Riepilogo, decisioni e attività in Markdown nel tuo vault di Obsidian."
+        "description": "Riepilogo, decisioni e azioni, con esportazione in Markdown e backup."
       },
       "answers": {
         "title": "Risposte con le fonti",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Conserva e chiedi",
-        "description": "Una nota strutturata in Markdown arriva nel tuo vault. Poi chiedi su tutte le riunioni."
+        "description": "Una nota strutturata arriva nella tua libreria. Più tardi puoi interrogare tutte le riunioni."
       }
     }
   },

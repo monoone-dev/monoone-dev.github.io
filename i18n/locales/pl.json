@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Małe oprogramowanie, prywatne z założenia",
-    "description": "MonoOne tworzy IndexOne – prywatne notatki ze spotkań na macOS, RigOne – centrum sterowania agentami kodującymi i SurfaceOne – system projektowy dla Angulara i Vue. Wszystko za darmo."
+    "description": "MonoOne tworzy IndexOne – prywatne notatki ze spotkań z AI na Maca i do przeglądarki, RigOne – centrum sterowania agentami kodującymi i SurfaceOne – system projektowy dla Angulara i Vue. Na start za darmo."
   },
   "nav": {
     "principles": "Zasady",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Prywatne z założenia",
-        "description": "Funkcje w chmurze są opcjonalne, a dane wrażliwe są usuwane przed wysłaniem. Udostępnianie jest szyfrowane end-to-end."
+        "description": "Funkcje w chmurze są opcjonalne. Bez nich Twoja praca zostaje na Twoim urządzeniu."
       },
       "mac": {
         "title": "Mac i web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Projekty",
       "title": "Projekty",
-      "description": "Wszystko, co dziś udostępniamy: co robi każdy produkt, dla kogo jest i jak działa. Wszystko za darmo."
+      "description": "Wszystko, co dziś udostępniamy: co robi każdy produkt, dla kogo jest i jak działa. Na start za darmo."
     },
     "links": {
       "download": "Pobierz na Maca",
@@ -82,14 +82,14 @@
     "description": "Kolejne dwa produkty są w drodze. Więcej powiemy, gdy będą gotowe."
   },
   "indexOne": {
-    "status": "Za darmo we wczesnym dostępie",
-    "tagline": "Bezpieczne, w 100% lokalne notatki ze spotkań na macOS.",
-    "description": "IndexOne nagrywa Twoje rozmowy, transkrybuje je i tworzy uporządkowaną notatkę w zwykłym Markdownie, która należy do Ciebie, a wszystko to na Twoim Macu. Nagrania, transkrypcje i notatki zostają w 100% na Twoim urządzeniu: bez konta i bez przetwarzania w chmurze. Twoja biblioteka jest przechowywana w zaszyfrowanej bazie danych i nic nie jest nigdzie wysyłane, chyba że wyraźnie na to pozwolisz.",
-    "audience": "Osoby, które spędzają dzień na rozmowach i chcą mieć własne notatki bez wysyłania nagrań do chmury.",
+    "status": "Za darmo na Macu",
+    "tagline": "Prywatne notatki ze spotkań z AI na Macu, z opcjonalnymi przestrzeniami w chmurze.",
+    "description": "IndexOne nagrywa obie strony rozmowy bez bota, transkrybuje ją na Twoim Macu i tworzy uporządkowaną notatkę, którą sprawdzisz z nagraniem. W przestrzeni On this Mac nagrywanie, transkrypcja i asystentka Ivy działają bez konta, a biblioteka leży w zaszyfrowanej bazie danych. Opcjonalne przestrzenie w chmurze otworzysz w każdej przeglądarce: na start darmowe konto, płatne plany, gdy potrzebujesz więcej. Nie są szyfrowane end-to-end.",
+    "audience": "Osoby, które spędzają dzień na rozmowach i chcą notatek, które da się sprawdzić, z możliwością zostawienia nagrań na swoim Macu.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon i Intel",
-      "noAccount": "Bez konta"
+      "arch": "Apple Silicon (M1 lub nowszy)",
+      "noAccount": "Bez konta na Macu"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper na urządzeniu",
-        "description": "Transkrypcja działa lokalnie dzięki Metal. Bez transkrypcji w chmurze."
+        "description": "W przestrzeni On this Mac transkrypcja działa na Twoim Macu dzięki Metal. Przestrzenie w chmurze są transkrybowane w chmurze."
       },
       "notes": {
         "title": "Notatki należą do Ciebie",
-        "description": "Podsumowanie, decyzje i zadania jako Markdown w Twoim sejfie Obsidiana."
+        "description": "Podsumowanie, decyzje i zadania, z eksportem do Markdown i kopiami zapasowymi."
       },
       "answers": {
         "title": "Odpowiedzi ze źródłami",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Zachowaj i pytaj",
-        "description": "Uporządkowana notatka w Markdown trafia do Twojego vaultu. Później pytasz o wszystkie spotkania."
+        "description": "Uporządkowana notatka trafia do Twojej biblioteki. Później pytasz o wszystkie spotkania."
       }
     }
   },

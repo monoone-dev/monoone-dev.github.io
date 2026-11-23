@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "De petits logiciels, privés par défaut",
-    "description": "MonoOne crée IndexOne, des notes de réunion privées pour macOS ; RigOne, une salle de contrôle pour agents de code ; et SurfaceOne, un design system pour Angular et Vue. Le tout gratuit."
+    "description": "MonoOne crée IndexOne, des notes de réunion privées avec IA pour Mac et le web ; RigOne, une salle de contrôle pour agents de code ; et SurfaceOne, un design system pour Angular et Vue. Gratuit pour commencer."
   },
   "nav": {
     "principles": "Principes",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privé par défaut",
-        "description": "Les fonctions cloud sont facultatives et les données sensibles sont masquées avant l'envoi. Le partage est chiffré de bout en bout."
+        "description": "Les fonctions cloud sont facultatives. Sans elles, votre travail reste sur votre appareil."
       },
       "mac": {
         "title": "Mac et web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Projets",
       "title": "Projets",
-      "description": "Tout ce que nous publions aujourd’hui : ce que fait chaque produit, à qui il s’adresse et comment il fonctionne. Tout est gratuit."
+      "description": "Tout ce que nous proposons aujourd’hui : ce que fait chaque produit, à qui il s’adresse et comment il fonctionne. Gratuit pour commencer."
     },
     "links": {
       "download": "Télécharger pour Mac",
@@ -82,14 +82,14 @@
     "description": "Deux autres produits sont en route. Nous en dirons plus quand ils seront prêts."
   },
   "indexOne": {
-    "status": "Gratuit en accès anticipé",
-    "tagline": "Des notes de réunion sécurisées et 100 % locales pour macOS.",
-    "description": "IndexOne enregistre vos appels, les transcrit et rédige une note structurée en Markdown brut qui vous appartient, le tout sur votre Mac. Enregistrements, transcriptions et notes restent à 100 % sur votre appareil : aucun compte, aucun traitement dans le cloud. Votre bibliothèque est stockée dans une base de données chiffrée, et rien n'est envoyé nulle part sauf si vous le choisissez explicitement.",
-    "audience": "Celles et ceux qui passent leur journée en appel et veulent des notes à eux, sans envoyer l’audio dans le cloud.",
+    "status": "Gratuit sur Mac",
+    "tagline": "Des notes de réunion privées avec IA sur votre Mac, avec des espaces cloud facultatifs.",
+    "description": "IndexOne enregistre les deux côtés d’un appel sans bot, le transcrit sur votre Mac et rédige une note structurée que vous pouvez vérifier avec l’enregistrement. Dans l’espace On this Mac, l’enregistrement, la transcription et l’assistante Ivy fonctionnent sans compte, et votre bibliothèque est stockée dans une base de données chiffrée. Les espaces cloud facultatifs s’ouvrent dans n’importe quel navigateur : un compte gratuit pour commencer, des offres payantes quand il vous en faut plus. Ils ne sont pas chiffrés de bout en bout.",
+    "audience": "Les personnes qui passent leur journée en appel et veulent des notes vérifiables, avec la possibilité de garder l’audio sur leur Mac.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon et Intel",
-      "noAccount": "Aucun compte requis"
+      "arch": "Apple Silicon (M1 ou plus récent)",
+      "noAccount": "Aucun compte requis sur Mac"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper sur l'appareil",
-        "description": "La transcription s'exécute en local avec Metal. Aucune transcription dans le cloud."
+        "description": "Dans l’espace On this Mac, la transcription tourne sur votre Mac avec Metal. Les espaces cloud sont transcrits dans le cloud."
       },
       "notes": {
         "title": "Des notes à vous",
-        "description": "Résumé, décisions et actions en Markdown dans votre coffre Obsidian."
+        "description": "Résumé, décisions et actions, avec export Markdown et sauvegardes."
       },
       "answers": {
         "title": "Des réponses sourcées",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Gardez et interrogez",
-        "description": "Une note structurée en Markdown arrive dans votre vault. Interrogez ensuite toutes vos réunions."
+        "description": "Une note structurée arrive dans votre bibliothèque. Plus tard, interrogez toutes vos réunions."
       }
     }
   },

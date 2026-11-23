@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Software pequeno, privado por padrão",
-    "description": "A MonoOne cria o IndexOne, notas de reuniões privadas para macOS; o RigOne, uma sala de controlo para agentes de programação; e o SurfaceOne, um design system para Angular e Vue. Tudo gratuito."
+    "description": "A MonoOne faz o IndexOne, notas de reunião privadas com IA para Mac e web; o RigOne, uma sala de controle para agentes de programação; e o SurfaceOne, um design system para Angular e Vue. Comece grátis."
   },
   "nav": {
     "principles": "Princípios",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privado por padrão",
-        "description": "Os recursos na nuvem são opcionais e os dados sensíveis são removidos antes do envio. O compartilhamento é criptografado de ponta a ponta."
+        "description": "Os recursos na nuvem são opcionais. Sem eles, seu trabalho fica no seu dispositivo."
       },
       "mac": {
         "title": "Mac e web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Projetos",
       "title": "Projetos",
-      "description": "Tudo o que lançamos hoje: o que cada produto faz, para quem é e como funciona. Tudo grátis."
+      "description": "Tudo o que oferecemos hoje: o que cada produto faz, para quem é e como funciona. Comece grátis."
     },
     "links": {
       "download": "Baixar para Mac",
@@ -82,14 +82,14 @@
     "description": "Mais dois produtos estão a caminho. Contaremos mais quando estiverem prontos."
   },
   "indexOne": {
-    "status": "Grátis em acesso antecipado",
-    "tagline": "Notas de reunião seguras e 100% locais para macOS.",
-    "description": "O IndexOne grava suas chamadas, transcreve e escreve uma nota estruturada em Markdown simples que é sua, tudo no seu Mac. Gravações, transcrições e notas ficam 100% no seu dispositivo: sem conta e sem processamento na nuvem. Sua biblioteca fica em um banco de dados criptografado, e nada é enviado a lugar nenhum, a menos que você escolha isso explicitamente.",
-    "audience": "Quem passa o dia em chamadas e quer notas próprias, sem enviar o áudio para a nuvem.",
+    "status": "Grátis no Mac",
+    "tagline": "Notas de reunião privadas com IA no seu Mac, com espaços na nuvem opcionais.",
+    "description": "O IndexOne grava os dois lados de uma chamada sem bot, transcreve no seu Mac e escreve uma nota estruturada que você pode conferir com a gravação. No espaço On this Mac, a gravação, a transcrição e a assistente Ivy funcionam sem conta, e sua biblioteca fica em um banco de dados criptografado. Os espaços na nuvem, opcionais, abrem em qualquer navegador: uma conta gratuita para começar e planos pagos quando você precisar de mais. Eles não têm criptografia de ponta a ponta.",
+    "audience": "Quem passa o dia em chamadas e quer notas que possa conferir, com a opção de manter o áudio no próprio Mac.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon e Intel",
-      "noAccount": "Sem conta"
+      "arch": "Apple Silicon (M1 ou posterior)",
+      "noAccount": "Sem conta no Mac"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper no dispositivo",
-        "description": "A transcrição roda localmente com Metal. Sem transcrição na nuvem."
+        "description": "No espaço On this Mac, a transcrição roda no seu Mac com Metal. Os espaços na nuvem são transcritos na nuvem."
       },
       "notes": {
         "title": "Notas que são suas",
-        "description": "Resumo, decisões e tarefas em Markdown no seu cofre do Obsidian."
+        "description": "Resumo, decisões e tarefas, com exportação para Markdown e backups."
       },
       "answers": {
         "title": "Respostas com fontes",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Guarde e pergunte",
-        "description": "Uma nota estruturada em Markdown chega ao seu vault. Depois, pergunte sobre todas as reuniões."
+        "description": "Uma nota estruturada chega à sua biblioteca. Depois, pergunte sobre todas as reuniões."
       }
     }
   },

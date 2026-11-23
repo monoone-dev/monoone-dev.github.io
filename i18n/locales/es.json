@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Software pequeño, privado por defecto",
-    "description": "MonoOne crea IndexOne, notas de reuniones privadas para macOS; RigOne, una sala de control para agentes de programación; y SurfaceOne, un sistema de diseño para Angular y Vue. Todo gratis."
+    "description": "MonoOne crea IndexOne, notas de reuniones privadas con IA para Mac y web; RigOne, una sala de control para agentes de programación; y SurfaceOne, un sistema de diseño para Angular y Vue. Empieza gratis."
   },
   "nav": {
     "principles": "Principios",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Privado por defecto",
-        "description": "Las funciones en la nube son opcionales y los datos sensibles se eliminan antes de enviarse. Compartir está cifrado de extremo a extremo."
+        "description": "Las funciones en la nube son opcionales. Sin ellas, tu trabajo se queda en tu dispositivo."
       },
       "mac": {
         "title": "Mac y web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Proyectos",
       "title": "Proyectos",
-      "description": "Todo lo que publicamos hoy: qué hace cada producto, para quién es y cómo funciona. Todo gratis."
+      "description": "Todo lo que ofrecemos hoy: qué hace cada producto, para quién es y cómo funciona. Empieza gratis."
     },
     "links": {
       "download": "Descargar para Mac",
@@ -82,14 +82,14 @@
     "description": "Dos productos más están en camino. Contaremos más cuando estén listos."
   },
   "indexOne": {
-    "status": "Gratis en acceso anticipado",
-    "tagline": "Notas de reuniones seguras y 100 % locales para macOS.",
-    "description": "IndexOne graba tus llamadas, las transcribe y redacta una nota estructurada en Markdown plano que es tuya, todo en tu Mac. Las grabaciones, transcripciones y notas se quedan al 100 % en tu dispositivo: sin cuenta y sin procesamiento en la nube. Tu biblioteca se guarda en una base de datos cifrada y no se envía nada a ningún sitio salvo que tú lo decidas expresamente.",
-    "audience": "Personas que pasan el día en llamadas y quieren notas propias, sin enviar el audio a la nube.",
+    "status": "Gratis en el Mac",
+    "tagline": "Notas de reuniones privadas con IA en tu Mac, con espacios en la nube opcionales.",
+    "description": "IndexOne graba ambos lados de una llamada sin bot, la transcribe en tu Mac y escribe una nota estructurada que puedes contrastar con la grabación. En el espacio On this Mac, la grabación, la transcripción y la asistente Ivy funcionan sin cuenta, y tu biblioteca se guarda en una base de datos cifrada. Los espacios en la nube, opcionales, se abren en cualquier navegador: una cuenta gratuita para empezar y planes de pago cuando necesites más. No tienen cifrado de extremo a extremo.",
+    "audience": "Personas que pasan el día en llamadas y quieren notas que puedan comprobar, con la opción de dejar el audio en su Mac.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon e Intel",
-      "noAccount": "Sin cuenta"
+      "arch": "Apple Silicon (M1 o posterior)",
+      "noAccount": "Sin cuenta en el Mac"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper en el dispositivo",
-        "description": "La transcripción se ejecuta localmente con Metal. Sin transcripción en la nube."
+        "description": "En el espacio On this Mac, la transcripción se ejecuta en tu Mac con Metal. Los espacios en la nube se transcriben en la nube."
       },
       "notes": {
         "title": "Notas que son tuyas",
-        "description": "Resumen, decisiones y tareas en Markdown dentro de tu bóveda de Obsidian."
+        "description": "Resumen, decisiones y tareas, con exportación a Markdown y copias de seguridad."
       },
       "answers": {
         "title": "Respuestas con fuentes",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Guarda y pregunta",
-        "description": "Una nota estructurada en Markdown llega a tu vault. Pregunta sobre todas tus reuniones después."
+        "description": "Una nota estructurada llega a tu biblioteca. Después puedes preguntar sobre todas las reuniones."
       }
     }
   },
