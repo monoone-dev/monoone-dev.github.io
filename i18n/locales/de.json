@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Kleine Software, standardmäßig privat",
-    "description": "MonoOne entwickelt IndexOne, private Meeting-Notizen für macOS, RigOne, eine Steuerzentrale für Coding-Agenten, und SurfaceOne, ein Designsystem für Angular und Vue. Alles kostenlos."
+    "description": "MonoOne entwickelt IndexOne, private KI-Meeting-Notizen für Mac und Web, RigOne, eine Steuerzentrale für Coding-Agenten, und SurfaceOne, ein Designsystem für Angular und Vue. Kostenlos starten."
   },
   "nav": {
     "principles": "Prinzipien",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "Standardmäßig privat",
-        "description": "Cloud-Funktionen sind optional, sensible Daten werden vor dem Senden entfernt. Teilen ist Ende-zu-Ende-verschlüsselt."
+        "description": "Cloud-Funktionen sind optional. Ohne sie bleiben deine Dateien auf deinem Gerät, und was du sendest, sehen nur die KI-Dienste, die du verbindest."
       },
       "mac": {
         "title": "Mac und Web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · Projekte",
       "title": "Projekte",
-      "description": "Alles, was wir heute anbieten: was jedes Produkt tut, für wen es ist und wie es funktioniert. Alles kostenlos."
+      "description": "Alles, was wir heute anbieten: was jedes Produkt tut, für wen es ist und wie es funktioniert. Kostenlos starten."
     },
     "links": {
       "download": "Für Mac laden",
@@ -82,14 +82,14 @@
     "description": "Zwei weitere Produkte sind unterwegs. Mehr dazu, wenn sie fertig sind."
   },
   "indexOne": {
-    "status": "Kostenlos im Early Access",
-    "tagline": "Sichere, 100 % lokale Meeting-Notizen für macOS.",
-    "description": "IndexOne nimmt deine Calls auf, transkribiert sie und schreibt eine strukturierte Notiz in reinem Markdown, die dir gehört – alles auf deinem Mac. Aufnahmen, Transkripte und Notizen bleiben zu 100 % auf deinem Gerät: kein Konto und keine Verarbeitung in der Cloud. Deine Bibliothek liegt in einer verschlüsselten Datenbank, und nichts wird irgendwohin gesendet, außer du entscheidest dich ausdrücklich dafür.",
-    "audience": "Menschen, die den Tag in Calls verbringen und eigene Notizen wollen, ohne Audio in eine Cloud zu schicken.",
+    "status": "Auf dem Mac kostenlos",
+    "tagline": "Private KI-Meeting-Notizen auf deinem Mac, mit optionalen Cloud-Bereichen.",
+    "description": "IndexOne nimmt beide Seiten eines Calls ohne Bot auf, transkribiert ihn auf deinem Mac und schreibt eine strukturierte Notiz, die du an der Aufnahme prüfen kannst. Im Bereich On this Mac funktionieren Aufnahme, Transkription und die Assistentin Ivy ohne Konto, und deine Bibliothek liegt in einer verschlüsselten Datenbank. Optionale Cloud-Bereiche öffnen sich in jedem Browser: zum Start ein kostenloses Konto, bezahlte Pläne, wenn du mehr brauchst. Sie sind nicht Ende-zu-Ende-verschlüsselt.",
+    "audience": "Menschen, die den Tag in Calls verbringen und Notizen wollen, die sie prüfen können, mit der Option, Audio auf dem eigenen Mac zu behalten.",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon und Intel",
-      "noAccount": "Kein Konto nötig"
+      "arch": "Apple Silicon (M1 oder neuer)",
+      "noAccount": "Auf dem Mac kein Konto nötig"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "Whisper auf dem Gerät",
-        "description": "Die Transkription läuft lokal mit Metal. Keine Transkription in der Cloud."
+        "description": "Im Bereich On this Mac läuft die Transkription mit Metal auf deinem Mac. Cloud-Bereiche werden in der Cloud transkribiert."
       },
       "notes": {
         "title": "Notizen, die dir gehören",
-        "description": "Zusammenfassung, Entscheidungen und Aufgaben als Markdown in deinem Obsidian-Vault."
+        "description": "Zusammenfassung, Entscheidungen und Aufgaben, mit Markdown-Export und Backups."
       },
       "answers": {
         "title": "Antworten mit Quellen",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "Behalten und fragen",
-        "description": "Eine strukturierte Markdown-Notiz landet in deinem Vault. Später fragst du über alle Meetings hinweg."
+        "description": "Eine strukturierte Notiz landet in deiner Bibliothek. Später fragst du über alle Meetings hinweg."
       }
     }
   },

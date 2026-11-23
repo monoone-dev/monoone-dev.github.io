@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "小巧软件，默认保护隐私",
-    "description": "MonoOne 打造了 IndexOne（macOS 上的私密会议笔记）、RigOne（编程代理的控制室）以及 SurfaceOne（面向 Angular 和 Vue 的设计系统）。全部免费。"
+    "description": "MonoOne 打造了 IndexOne（适用于 Mac 和网页的私密 AI 会议笔记）、RigOne（编程智能体控制室）和 SurfaceOne（适用于 Angular 与 Vue 的设计系统）。可免费开始使用。"
   },
   "nav": {
     "principles": "理念",
@@ -43,7 +43,7 @@
       },
       "private": {
         "title": "默认私密",
-        "description": "云端功能需主动开启，发送前会移除敏感信息。共享采用端到端加密。"
+        "description": "云端功能均为可选。不启用时，你的文件留在你的设备上，你发送的内容只有你连接的 AI 服务才能看到。"
       },
       "mac": {
         "title": "Mac 与 Web",
@@ -62,7 +62,7 @@
     "page": {
       "eyebrow": "MonoOne · 项目",
       "title": "项目",
-      "description": "我们目前发布的全部产品：每款产品做什么、适合谁、如何工作。全部免费。"
+      "description": "我们目前提供的全部产品：每款产品做什么、适合谁、如何运作。可免费开始使用。"
     },
     "links": {
       "download": "下载 Mac 版",
@@ -82,14 +82,14 @@
     "description": "还有两款产品正在路上。准备好后再详细介绍。"
   },
   "indexOne": {
-    "status": "抢先体验期间免费",
-    "tagline": "安全、100% 本地的 macOS 会议笔记。",
-    "description": "IndexOne 会录制你的通话、进行转写，并生成一份归你所有的结构化纯 Markdown 笔记，一切都在你的 Mac 上完成。录音、转写稿和笔记 100% 保留在你的设备上：无需账户，也不在云端处理。你的资料库存放在加密数据库中，除非你明确选择，否则不会向任何地方发送任何内容。",
-    "audience": "整天开会、希望拥有自己的笔记，又不想把音频发到云端的人。",
+    "status": "Mac 上免费",
+    "tagline": "在你的 Mac 上运行的私密 AI 会议笔记，云端空间可选。",
+    "description": "IndexOne 无需机器人即可录下通话双方，在你的 Mac 上转写，并生成可对照录音核对的结构化笔记。在 On this Mac 空间中，录音、转写和助手 Ivy 无需账户即可使用，资料库保存在加密数据库中。可选的云端空间可在任何浏览器中打开：先用免费账户开始，需要更多时再选付费方案。云端空间不提供端到端加密。",
+    "audience": "整天开会、希望笔记可以核对的人，也可以选择把音频留在自己的 Mac 上。",
     "meta": {
       "macos": "macOS 13.4+",
-      "arch": "Apple Silicon 和 Intel",
-      "noAccount": "无需账户"
+      "arch": "Apple Silicon（M1 或更新）",
+      "noAccount": "Mac 上无需账户"
     },
     "features": {
       "bothSides": {
@@ -98,11 +98,11 @@
       },
       "whisper": {
         "title": "设备端 Whisper",
-        "description": "转写借助 Metal 在本地运行，不使用云端转写。"
+        "description": "在 On this Mac 空间中，转写借助 Metal 在你的 Mac 上运行。云端空间在云端转写。"
       },
       "notes": {
         "title": "笔记归你所有",
-        "description": "摘要、决策和待办事项以 Markdown 格式保存在你的 Obsidian 库中。"
+        "description": "摘要、决策和待办事项，支持导出 Markdown 和备份。"
       },
       "answers": {
         "title": "有出处的回答",
@@ -128,7 +128,7 @@
       },
       "keep": {
         "title": "保存并提问",
-        "description": "结构化的 Markdown 笔记存入你的 vault，之后可以跨所有会议提问。"
+        "description": "结构化笔记进入你的资料库，之后可以就所有会议提问。"
       }
     }
   },
